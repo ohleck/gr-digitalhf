@@ -72,15 +72,13 @@ if(CMAKE_COMPILER_IS_GNUCXX AND NOT WIN32)
     add_definitions(-fvisibility=hidden)
 endif()
 
-#include(GrPython)
 find_package(PythonInterp)
 if(NOT PYTHONINTERP_FOUND)
     message(FATAL_ERROR "Python interpreter required by the build system.")
 endif(NOT PYTHONINTERP_FOUND)
 # locate python
 include(FindPythonLibs)
-MESSAGE("YYY ${PYTHON_LIBRARIES}")
-#)
+
 
 ########################################################################
 # Find boost
@@ -150,7 +148,7 @@ find_package(Doxygen)
 # components required to the list of GR_REQUIRED_COMPONENTS (in all
 # caps such as FILTER or FFT) and change the version to the minimum
 # API compatible version required.
-set(GR_REQUIRED_COMPONENTS RUNTIME)
+set(GR_REQUIRED_COMPONENTS RUNTIME DIGITAL)
 find_package(Gnuradio "3.7.2" REQUIRED)
 list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake/Modules)
 include(GrVersion)

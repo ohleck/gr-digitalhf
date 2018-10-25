@@ -50,7 +50,7 @@ class DIGITALHF_API adaptive_dfe : virtual public gr::block
                    int nB,  // number of forward FIR taps
                    int nF,  // number of backward FIR taps
                    int nW,  // number of feedback taps
-                   std::string py_file_name);
+                   std::string physical_layer_description);
 
 } ;
 

@@ -21,10 +21,10 @@
 #ifndef INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 #define INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 
-#include <digitalhf/adaptive_dfe.h>
-
 #include <boost/python.hpp>
 #include <boost/python/numpy.hpp>
+#include <gnuradio/digital/constellation.h>
+#include <digitalhf/adaptive_dfe.h>
 
 namespace gr {
 namespace digitalhf {
@@ -34,26 +34,32 @@ private:
   int _sps;
   int _nB, _nF, _nW;
 
-  std::string           _py_file_name;
-  boost::python::object _physicalLayer;
+  // module name w.r.t. digitalhf.physical_layer containing a PhysicalLayer class
+  std::string           _py_module_name;
+  boost::python::object _physicalLayer; // class instance of physical layer description
 
   std::vector<gr_complex> _taps_samples;
   std::vector<gr_complex> _taps_symbols;
 
-//  boost::python::numpy::ndarray _symbols;
-  boost::python::object _constellation;
+  std::vector<gr::digital::constellation_sptr> _constellations;
+  int _constellation_index;
+  std::vector<gr_complex> _symbols;
+  std::vector<gr_complex> _scramble;
 
-  void get_next_frame();
+  int _sample_counter;
+
+  void update_constellations(boost::python::object obj);
+  void update_frame_information(boost::python::object obj);
+  void update_doppler_information(boost::python::object obj);
 
 public:
   adaptive_dfe_impl(int sps, // samples per symbol
                     int nB,  // number of forward FIR taps
                     int nF,  // number of backward FIR taps
                     int nW,  // number of symbol taps
-                    std::string python_file_name);
+                    std::string physical_layer_description);
   virtual ~adaptive_dfe_impl();
 
-  // Where all the action really happens
   void forecast (int noutput_items, gr_vector_int &ninput_items_required);
 
   virtual bool start();
