@@ -14,8 +14,9 @@ class PhysicalLayer(object):
         self._preamble = [PhysicalLayer.get_preamble(), 0] ## BPSK
         self._data     = [PhysicalLayer.get_data(),  mode] ## according to the mode
         self._counter  = 0
+        self._preamble_phases = []
 
-    def set_mode(self):
+    def set_mode(self, mode):
         """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
         self._data[1] = mode
 
@@ -24,17 +25,32 @@ class PhysicalLayer(object):
 
     def get_frame(self):
         """returns the known+unknown symbols and scrambling"""
+        print('-------------------- get_frame --------------------',self._counter)
         if self._counter == 0:
-            return self._preamble
+            x= self._preamble
         else:
-            return self._data
+            x=self._data
+        print('get_frame end\n')
+        return x;
 
-    def get_doppler(self): ## symbols
+    def get_doppler(self, s):
         """used for doppler shift update, for determining which frame to provide next,
         and for stopping at end of data/when the signal quality is too low"""
+        print('-------------------- get_doppler --------------------',self._counter)
+        doppler = 0
+        if self._counter == 0: ## preamble
+            corr = s*np.conj(self._preamble[0]['symb'])
+            self._preamble_phases.extend([np.angle(np.sum(corr))])
+            if len(self._preamble_phases) == 2 and False:
+                doppler = 2*(self._preamble_phases[1] - self._preamble_phases[0])/256
+                print('preamble_phases', self._preamble_phases, 'doppler', doppler)
+                self._preamble_phases = self._preamble_phases[1:]
+            else:
+                phases = np.unwrap(np.angle(corr))
+                doppler = 2*(np.median(phases[-20:]) - np.median(phases[:20]))/80
+                print('doppler', doppler,self._preamble_phases)
+
         self._counter = (self._counter+1)&1
-        ## TODO: doppler calculations
-        doppler = 0.1234
         return [True, doppler]
 
     @staticmethod
@@ -67,9 +83,9 @@ class PhysicalLayer(object):
         ## PSK-8 modulation
         constellation = PhysicalLayer.make_psk(8,range(8))['points']
         a['scramble'] = constellation[p,]
-        a['symb'][ 32: 48] = 1 ## mini-probe 1
-        a['symb'][ 80: 96] = 1 ## mini-probe 2
-        a['symb'][128:144] = 1 ## mini-probe 3
+        a['symb'][ 32: 48] = a['scramble'][ 32: 48] ## mini-probe 1
+        a['symb'][ 80: 96] = a['scramble'][ 80: 96] ## mini-probe 2
+        a['symb'][128:144] = a['scramble'][128:144] ## mini-probe 3
         return a
 
     @staticmethod

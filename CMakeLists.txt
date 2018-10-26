@@ -22,6 +22,7 @@
 # Project setup
 ########################################################################
 cmake_minimum_required(VERSION 2.6)
+set(CMAKE_CXX_STANDARD 11)
 project(gr-digitalhf CXX C)
 enable_testing()
 
@@ -148,7 +149,7 @@ find_package(Doxygen)
 # components required to the list of GR_REQUIRED_COMPONENTS (in all
 # caps such as FILTER or FFT) and change the version to the minimum
 # API compatible version required.
-set(GR_REQUIRED_COMPONENTS RUNTIME DIGITAL)
+set(GR_REQUIRED_COMPONENTS RUNTIME DIGITAL VOLK)
 find_package(Gnuradio "3.7.2" REQUIRED)
 list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake/Modules)
 include(GrVersion)

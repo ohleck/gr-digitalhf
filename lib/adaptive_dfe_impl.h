@@ -34,19 +34,42 @@ private:
   int _sps;
   int _nB, _nF, _nW;
 
+  float _mu;
+  float _alpha;
+
   // module name w.r.t. digitalhf.physical_layer containing a PhysicalLayer class
   std::string           _py_module_name;
   boost::python::object _physicalLayer; // class instance of physical layer description
 
-  std::vector<gr_complex> _taps_samples;
-  std::vector<gr_complex> _taps_symbols;
+  gr_complex* _taps_samples;
+  gr_complex* _taps_symbols;
+
+  gr_complex* _hist_samples;
+  gr_complex* _hist_symbols;
+
+  int _hist_sample_index;
+  int _hist_symbol_index;
+
+  std::size_t _sample_counter;
 
   std::vector<gr::digital::constellation_sptr> _constellations;
   int _constellation_index;
   std::vector<gr_complex> _symbols;
   std::vector<gr_complex> _scramble;
+  std::vector<gr_complex> _descrambled_symbols;
+  int _symbol_counter;
 
-  int _sample_counter;
+  // PLL for doppler tracking
+  float _sum_phase_diff;
+  float _df;     // frequency offset in radians per sample
+  float _phase;  // accumulated phase for frequency correction
+  const float _b[2];
+  float _ud;
+
+  enum state {
+    WAIT_FOR_PREAMBLE,
+    DO_FILTER
+  } _state;
 
   void update_constellations(boost::python::object obj);
   void update_frame_information(boost::python::object obj);
