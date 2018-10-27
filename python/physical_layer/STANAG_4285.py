@@ -6,7 +6,7 @@ from gnuradio import digital
 class PhysicalLayer(object):
     """Physical layer description for STANAG 4285"""
 
-    def __init__(self, mode=0):
+    def __init__(self, mode=1):
         """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
         self._constellations = [PhysicalLayer.make_psk(2, [0,1]),
                                 PhysicalLayer.make_psk(4, [0,1,3,2]),
@@ -14,7 +14,7 @@ class PhysicalLayer(object):
         self._preamble = [PhysicalLayer.get_preamble(), 0] ## BPSK
         self._data     = [PhysicalLayer.get_data(),  mode] ## according to the mode
         self._counter  = 0
-        self._preamble_phases = []
+        self._is_first_frame  = True
 
     def set_mode(self, mode):
         """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
@@ -26,22 +26,30 @@ class PhysicalLayer(object):
     def get_frame(self):
         """returns the known+unknown symbols and scrambling"""
         print('-------------------- get_frame --------------------',self._counter)
-        if self._counter == 0:
-            x= self._preamble
-        else:
-            x=self._data
-        print('get_frame end\n')
-        return x;
+        return self._preamble if self._counter == 0 else self._data
 
     def get_doppler(self, s):
         """used for doppler shift update, for determining which frame to provide next,
         and for stopping at end of data/when the signal quality is too low"""
         print('-------------------- get_doppler --------------------',self._counter)
-        doppler = 0
-        if self._counter == 0: ## preamble
-            doppler = PhysicalLayer.data_aided_frequency_estimation(s, self._preamble[0]['symb'])
-        self._counter = (self._counter+1)&1
-        return [True, doppler]
+        success,doppler = self.quality_preamble(s) if self._counter == 0 else self.quality_data(s)
+        self._counter = (self._counter+1)&1 if success else 0
+        self._is_first_frame = not success
+        return success,doppler
+
+    def quality_preamble(self, s):
+        idx = range(80)
+        if self._is_first_frame:
+            idx = range(30,80)
+        z = s[idx]*np.conj(self._preamble[0]['symb'][idx])
+        success = np.sum(np.real(z)<0) < 30
+        doppler = PhysicalLayer.data_aided_frequency_estimation(s[idx], self._preamble[0]['symb'][idx])
+        return success,doppler
+
+    def quality_data(self, s):
+        known_symbols = np.mod(range(176),48)>=32
+        success = np.sum(np.real(s[known_symbols])<0) < 20
+        return success,0 ## no doppler estimate for data frames
 
     @staticmethod
     def get_preamble():
@@ -73,9 +81,8 @@ class PhysicalLayer(object):
         ## PSK-8 modulation
         constellation = PhysicalLayer.make_psk(8,range(8))['points']
         a['scramble'] = constellation[p,]
-        a['symb'][ 32: 48] = a['scramble'][ 32: 48] ## mini-probe 1
-        a['symb'][ 80: 96] = a['scramble'][ 80: 96] ## mini-probe 2
-        a['symb'][128:144] = a['scramble'][128:144] ## mini-probe 3
+        known_symbols = np.mod(range(176),48)>=32
+        a['symb'][known_symbols] = a['scramble'][known_symbols]
         return a
 
     @staticmethod

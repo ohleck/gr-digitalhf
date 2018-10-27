@@ -73,7 +73,7 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _nF(nF)
   , _nW(nW)
   , _mu(0.01)
-  , _alpha(0.0005)
+  , _alpha(0.001)
   , _py_module_name(python_module_name)
   , _physicalLayer()
   , _taps_samples(nullptr)
@@ -212,25 +212,23 @@ adaptive_dfe_impl::general_work(int noutput_items,
             known_symbol = _scramble[_symbol_counter] * descrambled_filter_output;
           }
           gr_complex err =  filter_output - known_symbol;
-          if (_symbol_counter >= 0) {
-            for (int j=0; j<_nB+_nF+1; ++j) {
-              _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
-            }
-            for (int j=0; j<_nW; ++j) {
-              assert(_hist_symbol_index+j < 2*_nW);
-              _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
-            }
+          for (int j=0; j<_nB+_nF+1; ++j) {
+            _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
+          }
+          for (int j=0; j<_nW; ++j) {
+            assert(_hist_symbol_index+j < 2*_nW);
+            _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
           }
           // if (_sample_counter < 80*5)
           //   std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
         }
-        if (is_known) {
+        if (is_known || true) {
           _taps_symbols[_hist_symbol_index] = _taps_symbols[_hist_symbol_index + _nW] = known_symbol;
           if (++_hist_symbol_index == _nW)
             _hist_symbol_index = 0;
         }
         _descrambled_symbols[_symbol_counter] = filter_output*std::conj(_scramble[_symbol_counter]);
-        out[nout++] = filter_output;
+        out[nout++] = filter_output*std::conj(_scramble[_symbol_counter]);
         ++_symbol_counter;
       }
       _sample_counter += 1;
@@ -330,8 +328,16 @@ void adaptive_dfe_impl::update_doppler_information(boost::python::object obj)
   int const n = boost::python::extract<int>(obj.attr("__len__")());
   assert(n==2);
   bool  const do_continue = boost::python::extract<bool>(obj[0]);
+  if (!do_continue) {
+    _state = WAIT_FOR_PREAMBLE;
+    _phase = 0;
+    _df    = 0;
+    std::fill_n(_hist_samples, 2*(_nB+_nF+1), gr_complex(0));
+    _hist_sample_index = 0;
+    _sample_counter    = 0;
+    return;
+  }
   float const doppler    = boost::python::extract<float>(obj[1]);
-
   update_pll(doppler);
 }
 
@@ -373,7 +379,7 @@ bool adaptive_dfe_impl::get_correlation_tag(uint64_t i, uint64_t& offset, float&
     }
     if (v[j].key == pmt::mp("corr_est")) {
       double const corr_est = pmt::to_double(v[j].value);
-      if (v[j].offset - nitems_read(0) == offset)// && corr_est > 18e3)
+      if (v[j].offset - nitems_read(0) == offset)// && corr_est > 10e3)
         return true;
     }
   }
