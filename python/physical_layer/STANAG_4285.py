@@ -41,7 +41,7 @@ class PhysicalLayer(object):
         if self._counter == 0: ## preamble
             doppler = PhysicalLayer.data_aided_frequency_estimation(s, self._preamble[0]['symb'])
         self._counter = (self._counter+1)&1
-        return [True, 2*doppler]
+        return [True, doppler]
 
     @staticmethod
     def get_preamble():

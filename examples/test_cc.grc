@@ -207,7 +207,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>[[x,x,x,x,x] for x in STANAG_4285.PhysicalLayer.get_preamble()['symb'].tolist()]</value>
+      <value>[[x,x,x,x,x] for x in STANAG_4285.PhysicalLayer.get_preamble()['symb'][9:40].tolist()]</value>
     </param>
   </block>
   <block>
@@ -812,7 +812,7 @@
     </param>
     <param>
       <key>mark_delay</key>
-      <value>nF+2</value>
+      <value>nF+2-9*sps</value>
     </param>
     <param>
       <key>threshold_method</key>

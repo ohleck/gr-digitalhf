@@ -23,8 +23,13 @@
 #endif
 
 #include <gnuradio/io_signature.h>
+#include <gnuradio/expj.h>
 #include <volk/volk.h>
 #include "adaptive_dfe_impl.h"
+
+#define VOLK_SAFE_DELETE(x) \
+  volk_free(x);        \
+  x = nullptr
 
 namespace gr {
 namespace digitalhf {
@@ -84,7 +89,6 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _scramble()
   , _descrambled_symbols()
   , _symbol_counter(0)
-  , _sum_phase_diff(0)
   , _df(0)
   , _phase(0)
   , _b{0.338187046465954, -0.288839024460507}
@@ -98,6 +102,10 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
  */
 adaptive_dfe_impl::~adaptive_dfe_impl()
 {
+  VOLK_SAFE_DELETE(_taps_samples);
+  VOLK_SAFE_DELETE(_taps_symbols);
+  VOLK_SAFE_DELETE(_hist_samples);
+  VOLK_SAFE_DELETE(_hist_symbols);
 }
 
 void
@@ -120,43 +128,13 @@ adaptive_dfe_impl::general_work(int noutput_items,
   int i = 0;
   for (; i<ninput_items[0] && nout < noutput_items; ++i) {
     assert(nout < noutput_items);
-    _phase += _df;
-    if (_phase > M_PI)
-      _phase -= 2*M_PI;
-    if (_phase < -M_PI)
-      _phase += 2*M_PI;
 
-    _hist_samples[_hist_sample_index] = _hist_samples[_hist_sample_index+_nB+_nF+1] = in[i] * std::exp(gr_complex(0,_phase));
-    if (++_hist_sample_index == _nB+_nF+1)
-      _hist_sample_index = 0;
+    insert_sample(in[i]);
 
     if (_state == WAIT_FOR_PREAMBLE) {
-      std::vector<tag_t> v;
-      get_tags_in_window(v, 0, i,i+1);
-      float phase_est = 0;
-      float  corr_est = 0;
       uint64_t offset = 0;
-      for (int j=0; j<v.size(); ++j) {
-        std::cout << "tag " << v[j].key << " " << v[j].offset-nitems_read(0) << std::endl;
-        if (v[j].key == pmt::mp("phase_est")) {
-          phase_est = pmt::to_double(v[j].value);
-          std::cout << "phase_est " << v[j].offset <<" " << nitems_read(0) << " " << phase_est << std::endl;
-        }
-        if (v[j].key == pmt::mp("corr_est")) {
-          corr_est = pmt::to_double(v[j].value);
-          std::cout << "corr_est " << v[j].offset << " " << nitems_read(0) << " "
-                    << pmt::is_number(v[j].value) << " "
-                    << pmt::is_integer(v[j].value) << " "
-                    << pmt::is_real(v[j].value) << " "
-                    << pmt::to_double(v[j].value)
-                    << std::endl;
-          if (corr_est > 130e3) {
-            offset = v[j].offset - nitems_read(0);
-            break;
-          }
-        }
-      }
-      if (corr_est > 130e3) {
+      float phase_est = 0;
+      if (get_correlation_tag(i, offset, phase_est)) {
         _state = DO_FILTER;
         _sample_counter = 0;
         _symbol_counter = 0;
@@ -168,10 +146,10 @@ adaptive_dfe_impl::general_work(int noutput_items,
         std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
         std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
         std::fill_n(_taps_symbols, _nW, gr_complex(0));
-        //_phase = -phase_est;
-        _taps_samples[_nB+1] = std::exp(gr_complex(0, -phase_est));
+        _phase = -phase_est;
+        _taps_samples[_nB+1] = 1;//gr_expj(-phase_est);
         _taps_symbols[0] = 1;
-        GILLock lock;
+        GILLock gil_lock;
         try {
           update_frame_information(_physicalLayer.attr("get_frame")());
         } catch (boost::python::error_already_set const&) {
@@ -182,16 +160,16 @@ adaptive_dfe_impl::general_work(int noutput_items,
     if (_state == DO_FILTER) {
       gr_complex dot_samples = 0;
       // volk_32fc_x2_dot_prod_32fc(&dot_samples,
-      //                            &_hist_samples.front()+_hist_sample_index,
-      //                            &_taps_samples.front(),
-      //                            _taps_samples.size());
-      gr_complex filter_output = dot_samples;
+      //                            _hist_samples+_hist_sample_index,
+      //                            _taps_samples,
+      //                            _nB+_nF+1);
       // if (_sample_counter < 80*5)
       //   std::cout << "SAMPLE " << _sample_counter << " " << dot_samples << std::endl;
+      gr_complex filter_output = dot_samples;
       if ((_sample_counter%_sps) == 0) {
         if (_symbol_counter == _symbols.size()) {
           _symbol_counter = 0;
-          GILLock lock;
+          GILLock gil_lock;
           try {
             boost::python::numpy::ndarray s = boost::python::numpy::from_data(&_descrambled_symbols.front(),
                                                                               boost::python::numpy::dtype::get_builtin<gr_complex>(),
@@ -243,7 +221,8 @@ adaptive_dfe_impl::general_work(int noutput_items,
               _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
             }
           }
-          // std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
+          // if (_sample_counter < 80*5)
+          //   std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
         }
         if (is_known) {
           _taps_symbols[_hist_symbol_index] = _taps_symbols[_hist_symbol_index + _nW] = known_symbol;
@@ -266,15 +245,16 @@ adaptive_dfe_impl::general_work(int noutput_items,
 
 bool adaptive_dfe_impl::start()
 {
+  gr::thread::scoped_lock lock(d_setlock);
   // make sure python is ready for threading
   if( Py_IsInitialized() ){
-    GILLock lock;
+    GILLock gil_lock;
     if(PyEval_ThreadsInitialized() != 1 ){
       PyEval_InitThreads();
     }
     boost::python::numpy::initialize();
   } else {
-    throw std::runtime_error("dont use es_pyhandler without python!");
+    throw std::runtime_error("dont use adaptive_dfe without python!");
   }
   _taps_samples = (gr_complex*)(volk_malloc(  (_nB+_nF+1)*sizeof(gr_complex), volk_get_alignment()));
   _taps_symbols = (gr_complex*)(volk_malloc(          _nW*sizeof(gr_complex), volk_get_alignment()));
@@ -284,7 +264,7 @@ bool adaptive_dfe_impl::start()
   _taps_symbols[0]     = 1;
 
   std::cout << "adaptive_dfe_impl::start()" << std::endl;
-  GILLock lock;
+  GILLock gil_lock;
   try {
     boost::python::object module        = boost::python::import(boost::python::str("digitalhf.physical_layer." + _py_module_name));
     boost::python::object PhysicalLayer = module.attr("PhysicalLayer");
@@ -298,13 +278,14 @@ bool adaptive_dfe_impl::start()
 }
 bool adaptive_dfe_impl::stop()
 {
+  gr::thread::scoped_lock lock(d_setlock);
   std::cout << "adaptive_dfe_impl::stop()" << std::endl;
-  GILLock lock;
+  GILLock gil_lock;
   _physicalLayer = boost::python::object();
-  volk_free(_taps_samples);
-  volk_free(_taps_symbols);
-  volk_free(_hist_samples);
-  volk_free(_hist_symbols);
+  VOLK_SAFE_DELETE(_taps_samples);
+  VOLK_SAFE_DELETE(_taps_symbols);
+  VOLK_SAFE_DELETE(_hist_samples);
+  VOLK_SAFE_DELETE(_hist_symbols);
   return true;
 }
 
@@ -348,19 +329,55 @@ void adaptive_dfe_impl::update_doppler_information(boost::python::object obj)
 {
   int const n = boost::python::extract<int>(obj.attr("__len__")());
   assert(n==2);
-  double const do_continue = boost::python::extract<bool>(obj[0]);
-  double const doppler = boost::python::extract<float>(obj[1]);
+  bool  const do_continue = boost::python::extract<bool>(obj[0]);
+  float const doppler    = boost::python::extract<float>(obj[1]);
 
-  float delta_f = doppler/_sps;
+  update_pll(doppler);
+}
+
+void adaptive_dfe_impl::update_pll(float doppler) {
+  if (doppler == 0)
+    return;
+  float const delta_f = doppler/_sps;
   if (_df == 0) { // init
-    _ud = _df = -delta_f;
+    _ud = _df = delta_f;
   } else {
-    const float ud_old = _ud;
-    _ud  = -delta_f;
+    float const ud_old = _ud;
+    _ud  = delta_f;
     _df +=_b[0]*_ud + _b[1]*ud_old;
   }
   std::cout << "PLL: " << _df << " " << delta_f << std::endl;
-  _sum_phase_diff = 0;
+}
+void adaptive_dfe_impl::insert_sample(gr_complex z) {
+  // local oscillator update
+  _phase += _df;
+  if (_phase > M_PI)
+    _phase -= 2*M_PI;
+  if (_phase < -M_PI)
+    _phase += 2*M_PI;
+
+  // insert sample into the circular buffer
+  _hist_samples[_hist_sample_index] = _hist_samples[_hist_sample_index+_nB+_nF+1] = z * gr_expj(-_phase);
+  if (++_hist_sample_index == _nB+_nF+1)
+    _hist_sample_index = 0;
+}
+bool adaptive_dfe_impl::get_correlation_tag(uint64_t i, uint64_t& offset, float& phase_est) {
+  std::vector<tag_t> v;
+  get_tags_in_window(v, 0, i,i+1);
+  for (int j=0; j<v.size(); ++j) {
+    std::cout << "tag " << v[j].key << " " << v[j].offset-nitems_read(0) << std::endl;
+    if (v[j].key == pmt::mp("phase_est")) {
+      phase_est = pmt::to_double(v[j].value);
+      std::cout << "phase_est " << v[j].offset <<" " << nitems_read(0) << " " << phase_est << std::endl;
+      offset = v[j].offset - nitems_read(0);
+    }
+    if (v[j].key == pmt::mp("corr_est")) {
+      double const corr_est = pmt::to_double(v[j].value);
+      if (v[j].offset - nitems_read(0) == offset)// && corr_est > 18e3)
+        return true;
+    }
+  }
+  return false;
 }
 
 } /* namespace digitalhf */

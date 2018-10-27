@@ -60,7 +60,6 @@ private:
   int _symbol_counter;
 
   // PLL for doppler tracking
-  float _sum_phase_diff;
   float _df;     // frequency offset in radians per sample
   float _phase;  // accumulated phase for frequency correction
   const float _b[2];
@@ -74,6 +73,10 @@ private:
   void update_constellations(boost::python::object obj);
   void update_frame_information(boost::python::object obj);
   void update_doppler_information(boost::python::object obj);
+
+  void insert_sample(gr_complex z);
+  void update_pll(float doppler);
+  bool get_correlation_tag(uint64_t i, uint64_t& offset, float& phase_est);
 
 public:
   adaptive_dfe_impl(int sps, // samples per symbol
