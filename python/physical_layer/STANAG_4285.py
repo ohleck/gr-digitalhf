@@ -39,19 +39,9 @@ class PhysicalLayer(object):
         print('-------------------- get_doppler --------------------',self._counter)
         doppler = 0
         if self._counter == 0: ## preamble
-            corr = s*np.conj(self._preamble[0]['symb'])
-            self._preamble_phases.extend([np.angle(np.sum(corr))])
-            if len(self._preamble_phases) == 2 and False:
-                doppler = 2*(self._preamble_phases[1] - self._preamble_phases[0])/256
-                print('preamble_phases', self._preamble_phases, 'doppler', doppler)
-                self._preamble_phases = self._preamble_phases[1:]
-            else:
-                phases = np.unwrap(np.angle(corr))
-                doppler = 2*(np.median(phases[-20:]) - np.median(phases[:20]))/80
-                print('doppler', doppler,self._preamble_phases)
-
+            doppler = PhysicalLayer.data_aided_frequency_estimation(s, self._preamble[0]['symb'])
         self._counter = (self._counter+1)&1
-        return [True, doppler]
+        return [True, 2*doppler]
 
     @staticmethod
     def get_preamble():
@@ -94,3 +84,20 @@ class PhysicalLayer(object):
         c['points']  = np.exp(2*np.pi*1j*np.array(range(n))/n)
         c['symbols'] = gray_code
         return c
+
+    @staticmethod
+    def data_aided_frequency_estimation(x,c):
+        """Data-Aided Frequency Estimation for Burst Digital Transmission,
+        Umberto Mengali and M. Morelli, IEEE TRANSACTIONS ON COMMUNICATIONS,
+        VOL. 45, NO. 1, JANUARY 1997"""
+        z  = x*np.conj(c)                                      ## eq (2)
+        L0 = len(z)
+        N  = L0//2
+        R  = np.zeros(N, dtype=np.complex64)
+        for i in range(N):
+            R[i] = 1.0/(L0-i)*np.sum(z[i:]*np.conj(z[0:L0-i])) ## eq (3)
+        m  = np.array(range(N), dtype=np.float)
+        w  = 3*((L0-m)*(L0-m+1)-N*(L0-N))/(N*(4*N*N - 6*N*L0 + 3*L0*L0-1)) ## eq (9)
+        mod_2pi = lambda x : np.mod(x-np.pi, 2*np.pi) - np.pi
+        fd = np.sum(w[1:] * mod_2pi(np.diff(np.angle(R))))     ## eq (8)
+        return fd
