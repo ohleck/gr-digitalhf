@@ -38,6 +38,7 @@ class DIGITALHF_API adaptive_dfe : virtual public gr::block
   public:
   typedef boost::shared_ptr<adaptive_dfe> sptr;
 
+  virtual ~adaptive_dfe() {}
   /*!
    * \brief Return a shared_ptr to a new instance of digitalhf::adaptive_dfe.
    *
@@ -50,8 +51,12 @@ class DIGITALHF_API adaptive_dfe : virtual public gr::block
                    int nB,  // number of forward FIR taps
                    int nF,  // number of backward FIR taps
                    int nW,  // number of feedback taps
+                   float mu,    //
+                   float alpha, //
                    std::string physical_layer_description);
 
+  virtual void set_mu(float) = 0;
+  virtual void set_mode(std::string) = 0;
 } ;
 
 } // namespace digitalhf

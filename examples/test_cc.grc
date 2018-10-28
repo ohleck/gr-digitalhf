@@ -136,7 +136,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1120, 101)</value>
+      <value>(1141, 80)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -211,6 +211,168 @@
     </param>
   </block>
   <block>
+    <key>variable_qtgui_chooser</key>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>value</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>True</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(42, 384)</value>
+    </param>
+    <param>
+      <key>gui_hint</key>
+      <value></value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>mode</value>
+    </param>
+    <param>
+      <key>label0</key>
+      <value>PSK</value>
+    </param>
+    <param>
+      <key>label1</key>
+      <value>QPSK</value>
+    </param>
+    <param>
+      <key>label2</key>
+      <value>8PSK</value>
+    </param>
+    <param>
+      <key>label3</key>
+      <value></value>
+    </param>
+    <param>
+      <key>label4</key>
+      <value></value>
+    </param>
+    <param>
+      <key>label</key>
+      <value>mode</value>
+    </param>
+    <param>
+      <key>labels</key>
+      <value>[]</value>
+    </param>
+    <param>
+      <key>num_opts</key>
+      <value>3</value>
+    </param>
+    <param>
+      <key>option0</key>
+      <value>'0'</value>
+    </param>
+    <param>
+      <key>option1</key>
+      <value>'1'</value>
+    </param>
+    <param>
+      <key>option2</key>
+      <value>'1'</value>
+    </param>
+    <param>
+      <key>option3</key>
+      <value>3</value>
+    </param>
+    <param>
+      <key>option4</key>
+      <value>4</value>
+    </param>
+    <param>
+      <key>options</key>
+      <value>[0, 1, 2]</value>
+    </param>
+    <param>
+      <key>orient</key>
+      <value>Qt.QVBoxLayout</value>
+    </param>
+    <param>
+      <key>type</key>
+      <value>string</value>
+    </param>
+    <param>
+      <key>widget</key>
+      <value>combo_box</value>
+    </param>
+  </block>
+  <block>
+    <key>variable_qtgui_range</key>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>value</key>
+      <value>0.002</value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>True</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(1024, 80)</value>
+    </param>
+    <param>
+      <key>gui_hint</key>
+      <value>(3,0,1,2)</value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>mu</value>
+    </param>
+    <param>
+      <key>label</key>
+      <value>mu</value>
+    </param>
+    <param>
+      <key>min_len</key>
+      <value>200</value>
+    </param>
+    <param>
+      <key>orient</key>
+      <value>Qt.Horizontal</value>
+    </param>
+    <param>
+      <key>start</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>step</key>
+      <value>0.001</value>
+    </param>
+    <param>
+      <key>stop</key>
+      <value>0.02</value>
+    </param>
+    <param>
+      <key>rangeType</key>
+      <value>float</value>
+    </param>
+    <param>
+      <key>widget</key>
+      <value>counter_slider</value>
+    </param>
+  </block>
+  <block>
     <key>variable</key>
     <param>
       <key>comment</key>
@@ -234,7 +396,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>12*sps</value>
+      <value>15</value>
     </param>
   </block>
   <block>
@@ -261,7 +423,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>9*sps</value>
+      <value>15</value>
     </param>
   </block>
   <block>
@@ -288,7 +450,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>5</value>
+      <value>4</value>
     </param>
   </block>
   <block>
@@ -365,7 +527,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(906, 325)</value>
+      <value>(928, 314)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -408,7 +570,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(245, 165)</value>
+      <value>(256, 154)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -443,7 +605,7 @@
     </param>
     <param>
       <key>const</key>
-      <value>4</value>
+      <value>5</value>
     </param>
     <param>
       <key>affinity</key>
@@ -455,7 +617,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(416, 186)</value>
+      <value>(426, 176)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -506,7 +668,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(949, 144)</value>
+      <value>(917, 133)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -557,7 +719,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(576, 186)</value>
+      <value>(586, 176)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -616,7 +778,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(10, 165)</value>
+      <value>(32, 154)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -663,7 +825,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(864, 453)</value>
+      <value>(874, 458)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -684,6 +846,18 @@
     <param>
       <key>sps</key>
       <value>sps</value>
+    </param>
+    <param>
+      <key>alpha</key>
+      <value>0.0005</value>
+    </param>
+    <param>
+      <key>mode</key>
+      <value>mode</value>
+    </param>
+    <param>
+      <key>mu</key>
+      <value>mu</value>
     </param>
     <param>
       <key>nB</key>
@@ -784,7 +958,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(629, 282)</value>
+      <value>(640, 272)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -812,7 +986,7 @@
     </param>
     <param>
       <key>mark_delay</key>
-      <value>nF+2-9*sps</value>
+      <value>(nF-9)*sps+2</value>
     </param>
     <param>
       <key>threshold_method</key>
@@ -820,7 +994,7 @@
     </param>
     <param>
       <key>threshold</key>
-      <value>0.3</value>
+      <value>0.5</value>
     </param>
   </block>
   <block>
@@ -851,7 +1025,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1088, 474)</value>
+      <value>(1120, 496)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -1206,7 +1380,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1098, 314)</value>
+      <value>(1120, 304)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -1573,7 +1747,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1098, 229)</value>
+      <value>(1120, 218)</value>
     </param>
     <param>
       <key>gui_hint</key>

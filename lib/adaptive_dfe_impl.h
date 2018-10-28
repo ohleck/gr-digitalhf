@@ -53,7 +53,11 @@ private:
   std::size_t _sample_counter;
 
   std::vector<gr::digital::constellation_sptr> _constellations;
+  std::vector<float> _npwr;
+  std::vector<int>   _npwr_counter;
+  int _npwr_max_time_constant;
   int _constellation_index;
+  std::vector<gr_complex> _samples;
   std::vector<gr_complex> _symbols;
   std::vector<gr_complex> _scramble;
   std::vector<gr_complex> _descrambled_symbols;
@@ -83,6 +87,8 @@ public:
                     int nB,  // number of forward FIR taps
                     int nF,  // number of backward FIR taps
                     int nW,  // number of symbol taps
+                    float mu,
+                    float alpha,
                     std::string physical_layer_description);
   virtual ~adaptive_dfe_impl();
 
@@ -95,6 +101,9 @@ public:
                            gr_vector_int &ninput_items,
                            gr_vector_const_void_star &input_items,
                            gr_vector_void_star &output_items);
+
+  virtual void set_mu(float mu) { _mu = mu; }
+  virtual void set_mode(std::string);
 
 } ;
 

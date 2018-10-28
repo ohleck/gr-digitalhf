@@ -51,10 +51,12 @@ adaptive_dfe::make(int sps, // samples per symbol
                    int nB,  // number of forward FIR taps
                    int nF,  // number of backward FIR taps
                    int nW,  // number of feedback taps
+                   float mu,
+                   float alpha,
                    std::string python_module_name)
 {
   return gnuradio::get_initial_sptr
-    (new adaptive_dfe_impl(sps, nB, nF, nW, python_module_name));
+    (new adaptive_dfe_impl(sps, nB, nF, nW, mu, alpha, python_module_name));
 }
 
 /*
@@ -64,16 +66,18 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
                                      int nB,  // number of forward FIR taps
                                      int nF,  // number of backward FIR taps
                                      int nW,  // number of feedback taps
+                                     float mu,
+                                     float alpha,
                                      std::string python_module_name)
   : gr::block("adaptive_dfe",
               gr::io_signature::make(1, 1, sizeof(gr_complex)),
               gr::io_signature::make(1, 1, sizeof(gr_complex)))
   , _sps(sps)
-  , _nB(nB)
-  , _nF(nF)
+  , _nB(nB*sps)
+  , _nF(nF*sps)
   , _nW(nW)
-  , _mu(0.01)
-  , _alpha(0.001)
+  , _mu(mu)
+  , _alpha(alpha)
   , _py_module_name(python_module_name)
   , _physicalLayer()
   , _taps_samples(nullptr)
@@ -84,7 +88,11 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _hist_symbol_index(0)
   , _sample_counter(0)
   , _constellations()
+  , _npwr()
+  , _npwr_counter()
+  , _npwr_max_time_constant(10)
   , _constellation_index()
+  , _samples()
   , _symbols()
   , _scramble()
   , _descrambled_symbols()
@@ -146,8 +154,9 @@ adaptive_dfe_impl::general_work(int noutput_items,
         std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
         std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
         std::fill_n(_taps_symbols, _nW, gr_complex(0));
+        _samples.clear();
         _phase = -phase_est;
-        _taps_samples[_nB+1] = 1;//gr_expj(-phase_est);
+        _taps_samples[_nB+1] = 1;
         _taps_symbols[0] = 1;
         GILLock gil_lock;
         try {
@@ -166,17 +175,26 @@ adaptive_dfe_impl::general_work(int noutput_items,
       // if (_sample_counter < 80*5)
       //   std::cout << "SAMPLE " << _sample_counter << " " << dot_samples << std::endl;
       gr_complex filter_output = dot_samples;
+      _samples.push_back(_hist_samples[_hist_sample_index+_nB+1]);
       if ((_sample_counter%_sps) == 0) {
         if (_symbol_counter == _symbols.size()) {
           _symbol_counter = 0;
           GILLock gil_lock;
           try {
-            boost::python::numpy::ndarray s = boost::python::numpy::from_data(&_descrambled_symbols.front(),
-                                                                              boost::python::numpy::dtype::get_builtin<gr_complex>(),
-                                                                              boost::python::make_tuple(_descrambled_symbols.size()),
-                                                                              boost::python::make_tuple(sizeof(gr_complex)),
-                                                                              boost::python::object());
-            update_doppler_information(_physicalLayer.attr("get_doppler")(s));
+            boost::python::numpy::ndarray sy =
+              boost::python::numpy::from_data(&_descrambled_symbols.front(),
+                                              boost::python::numpy::dtype::get_builtin<gr_complex>(),
+                                              boost::python::make_tuple(_descrambled_symbols.size()),
+                                              boost::python::make_tuple(sizeof(gr_complex)),
+                                              boost::python::object());
+            boost::python::numpy::ndarray sa =
+              boost::python::numpy::from_data(&_samples.front(),
+                                              boost::python::numpy::dtype::get_builtin<gr_complex>(),
+                                              boost::python::make_tuple(_samples.size()),
+                                              boost::python::make_tuple(sizeof(gr_complex)),
+                                              boost::python::object());
+            _samples.clear();
+            update_doppler_information(_physicalLayer.attr("get_doppler")(sy, sa));
             update_frame_information(_physicalLayer.attr("get_frame")());
           } catch (boost::python::error_already_set const&) {
             PyErr_Print();
@@ -184,46 +202,66 @@ adaptive_dfe_impl::general_work(int noutput_items,
         }
         gr_complex known_symbol = _symbols[_symbol_counter];
         bool is_known = true;
-        for (int k=0; k<1; ++k) {
-          filter_output = 0;
+        filter_output = 0;
 #if 1
-          volk_32fc_x2_dot_prod_32fc(&filter_output,
-                                     _hist_samples+_hist_sample_index,
-                                     _taps_samples,
-                                     _nB+_nF+1);
+        volk_32fc_x2_dot_prod_32fc(&filter_output,
+                                   _hist_samples+_hist_sample_index,
+                                   _taps_samples,
+                                   _nB+_nF+1);
 #else
-          for (int l=0; l<_nB+_nF+1; ++l) {
-            assert(_hist_sample_index+l < 2*(_nB+_nF+1));
-            filter_output += _hist_samples[_hist_sample_index+l]*_taps_samples[l];
+        for (int l=0; l<_nB+_nF+1; ++l) {
+          assert(_hist_sample_index+l < 2*(_nB+_nF+1));
+          filter_output += _hist_samples[_hist_sample_index+l]*_taps_samples[l];
           }
 #endif
-          gr_complex dot_symbols=0;
-          for (int l=0; l<_nW; ++l) {
-            assert(_hist_symbol_index+l < 2*_nW);
-            dot_symbols += _hist_symbols[_hist_symbol_index+l]*_taps_symbols[l];
-          }
-          filter_output += dot_symbols;
-          if (std::abs(known_symbol) < 1e-5) { // not known
-            is_known = false;
-            gr_complex descrambled_filter_output = std::conj(_scramble[_symbol_counter]) * filter_output;
-            gr::digital::constellation_sptr constell = _constellations[_constellation_index];
-            unsigned int jc = constell->decision_maker(&descrambled_filter_output);
-            constell->map_to_points(jc, &descrambled_filter_output);
-            known_symbol = _scramble[_symbol_counter] * descrambled_filter_output;
-          }
-          gr_complex err =  filter_output - known_symbol;
-          for (int j=0; j<_nB+_nF+1; ++j) {
-            _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
-          }
-          for (int j=0; j<_nW; ++j) {
-            assert(_hist_symbol_index+j < 2*_nW);
-            _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
-          }
-          // if (_sample_counter < 80*5)
-          //   std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
+        gr_complex dot_symbols=0;
+        for (int l=0; l<_nW; ++l) {
+          assert(_hist_symbol_index+l < 2*_nW);
+          dot_symbols += _hist_symbols[_hist_symbol_index+l]*_taps_symbols[l];
         }
+        filter_output += dot_symbols;
+        if (std::abs(known_symbol) < 1e-5) { // not known
+          is_known = false;
+          gr_complex descrambled_filter_output = std::conj(_scramble[_symbol_counter]) * filter_output;
+          gr::digital::constellation_sptr constell = _constellations[_constellation_index];
+          unsigned int jc = constell->decision_maker(&descrambled_filter_output);
+          gr_complex descrambled_symbol = 0;
+          constell->map_to_points(jc, &descrambled_symbol);
+
+          // make soft decisions
+          float const err = std::abs(descrambled_filter_output - descrambled_symbol);
+          _npwr_counter[_constellation_index] += (_npwr_counter[_constellation_index] < _npwr_max_time_constant);
+          float const alpha = 1.0f/_npwr_counter[_constellation_index];
+          _npwr[_constellation_index] = (1-alpha)*_npwr[_constellation_index] + alpha*err;
+          std::vector<float> soft_dec = constell->calc_soft_dec(descrambled_filter_output, _npwr[_constellation_index]);
+          // std::cout << "soft_dec " << _npwr[_constellation_index] << " : ";
+          // for (int k=0; k<soft_dec.size(); ++k) {
+          //   std::cout << soft_dec[k] << " ";
+          // }
+          // std::cout << "\n";
+
+          known_symbol = _scramble[_symbol_counter] * descrambled_symbol;
+        }
+        gr_complex err =  filter_output - known_symbol;
+        int jMax=0;
+        float tMax=0;
+        for (int j=0; j<_nB+_nF+1; ++j) {
+          assert(_hist_sample_index+j < 2*(_nB+_nF+1));
+          _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
+          // if (std::abs(_taps_samples[j]) > tMax) {
+          //   tMax = std::abs(_taps_samples[j]);
+          //   jMax = j;
+          // }
+        }
+        // std::cout << "taps_max: " << jMax << " " << tMax << std::endl;
+        for (int j=0; j<_nW; ++j) {
+          assert(_hist_symbol_index+j < 2*_nW);
+          _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
+        }
+        // if (_sample_counter < 80*5)
+        //   std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
         if (is_known || true) {
-          _taps_symbols[_hist_symbol_index] = _taps_symbols[_hist_symbol_index + _nW] = known_symbol;
+          _hist_symbols[_hist_symbol_index] = _hist_symbols[_hist_symbol_index + _nW] = known_symbol;
           if (++_hist_symbol_index == _nW)
             _hist_symbol_index = 0;
         }
@@ -258,10 +296,17 @@ bool adaptive_dfe_impl::start()
   _taps_symbols = (gr_complex*)(volk_malloc(          _nW*sizeof(gr_complex), volk_get_alignment()));
   _hist_samples = (gr_complex*)(volk_malloc(2*(_nB+_nF+1)*sizeof(gr_complex), volk_get_alignment()));
   _hist_symbols = (gr_complex*)(volk_malloc(        2*_nW*sizeof(gr_complex), volk_get_alignment()));
+
+  _samples.clear();
+  std::fill_n(_hist_samples, 2*(_nB+_nF+1), gr_complex(0));
+  std::fill_n(_hist_symbols,         2*_nW, gr_complex(0));
+  std::fill_n(_taps_samples,   (_nB+_nF+1), gr_complex(0));
+  std::fill_n(_taps_symbols,           _nW, gr_complex(0));
+
   _taps_samples[_nB+1] = 1;
   _taps_symbols[0]     = 1;
 
-  std::cout << "adaptive_dfe_impl::start()" << std::endl;
+  std::cout << "adaptive_dfe_impl::start() " << _nB << " " << _nF << " " << _mu << " " << _alpha << std::endl;
   GILLock gil_lock;
   try {
     boost::python::object module        = boost::python::import(boost::python::str("digitalhf.physical_layer." + _py_module_name));
@@ -287,10 +332,25 @@ bool adaptive_dfe_impl::stop()
   return true;
 }
 
+void adaptive_dfe_impl::set_mode(std::string mode) {
+  gr::thread::scoped_lock lock(d_setlock);
+  std::cout << "adaptive_dfe_impl::stop()" << std::endl;
+  GILLock gil_lock;
+  try {
+    _physicalLayer.attr("set_mode")(mode);
+  } catch (boost::python::error_already_set const&) {
+    PyErr_Print();
+    return;
+  }
+  update_constellations(_physicalLayer.attr("get_constellations")());
+}
+
 void adaptive_dfe_impl::update_constellations(boost::python::object obj)
 {
   int const n = boost::python::extract<int>(obj.attr("__len__")());
   _constellations.resize(n);
+  _npwr.resize(n);
+  _npwr_counter.resize(n);
   for (int i=0; i<n; ++i) {
     boost::python::numpy::ndarray const& array = boost::python::numpy::array(obj[i]);
     char const* data = array.get_data();
@@ -304,6 +364,8 @@ void adaptive_dfe_impl::update_constellations(boost::python::object obj)
     unsigned int const rotational_symmetry = 0;
     unsigned int const dimensionality = 1;
     _constellations[i] = gr::digital::constellation_calcdist::make(constell, pre_diff_code, rotational_symmetry, dimensionality);
+    _npwr[i] = 0.0f;
+    _npwr_counter[i] = 0;
   }
 }
 void adaptive_dfe_impl::update_frame_information(boost::python::object obj)
@@ -316,6 +378,7 @@ void adaptive_dfe_impl::update_frame_information(boost::python::object obj)
   _symbols.resize(m);
   _scramble.resize(m);
   _descrambled_symbols.resize(m);
+  _samples.clear();
   for (int i=0; i<m; ++i) {
     std::memcpy(&_symbols[i],  data+16*i,   sizeof(gr_complex));
     std::memcpy(&_scramble[i], data+16*i+8, sizeof(gr_complex));
@@ -355,17 +418,17 @@ void adaptive_dfe_impl::update_pll(float doppler) {
   std::cout << "PLL: " << _df << " " << delta_f << std::endl;
 }
 void adaptive_dfe_impl::insert_sample(gr_complex z) {
+  // insert sample into the circular buffer
+  _hist_samples[_hist_sample_index] = _hist_samples[_hist_sample_index+_nB+_nF+1] = z * gr_expj(-_phase);
+  if (++_hist_sample_index == _nB+_nF+1)
+    _hist_sample_index = 0;
+
   // local oscillator update
   _phase += _df;
   if (_phase > M_PI)
     _phase -= 2*M_PI;
   if (_phase < -M_PI)
     _phase += 2*M_PI;
-
-  // insert sample into the circular buffer
-  _hist_samples[_hist_sample_index] = _hist_samples[_hist_sample_index+_nB+_nF+1] = z * gr_expj(-_phase);
-  if (++_hist_sample_index == _nB+_nF+1)
-    _hist_sample_index = 0;
 }
 bool adaptive_dfe_impl::get_correlation_tag(uint64_t i, uint64_t& offset, float& phase_est) {
   std::vector<tag_t> v;

@@ -4,7 +4,9 @@
   <key>digitalhf_adaptive_dfe</key>
   <category>[digitalhf]</category>
   <import>import digitalhf</import>
-  <make>digitalhf.adaptive_dfe($sps,$nB,$nF,$nW,$py_obj_name)</make>
+  <make>digitalhf.adaptive_dfe($sps,$nB,$nF,$nW,$mu,$alpha,$py_obj_name)</make>
+  <callback>set_mu($mu)</callback>
+  <callback>set_mode($mode)</callback>
   <!-- Make one 'param' node for every Parameter you want settable from the GUI.
        Sub-nodes:
        * name
@@ -31,8 +33,23 @@
     <type>int</type>
   </param>
   <param>
+    <name>mu</name>
+    <key>mu</key>
+    <type>float</type>
+  </param>
+  <param>
+    <name>alpha</name>
+    <key>alpha</key>
+    <type>float</type>
+  </param>
+  <param>
     <name>py_obj_name</name>
     <key>py_obj_name</key>
+    <type>string</type>
+  </param>
+  <param>
+    <name>mode</name>
+    <key>mode</key>
     <type>string</type>
   </param>
 

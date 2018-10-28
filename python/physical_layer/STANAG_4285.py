@@ -6,7 +6,7 @@ from gnuradio import digital
 class PhysicalLayer(object):
     """Physical layer description for STANAG 4285"""
 
-    def __init__(self, mode=1):
+    def __init__(self, mode=0):
         """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
         self._constellations = [PhysicalLayer.make_psk(2, [0,1]),
                                 PhysicalLayer.make_psk(4, [0,1,3,2]),
@@ -18,7 +18,8 @@ class PhysicalLayer(object):
 
     def set_mode(self, mode):
         """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
-        self._data[1] = mode
+        print('set_mode', mode)
+        self._data[1] = int(mode)
 
     def get_constellations(self):
         return self._constellations
@@ -28,22 +29,30 @@ class PhysicalLayer(object):
         print('-------------------- get_frame --------------------',self._counter)
         return self._preamble if self._counter == 0 else self._data
 
-    def get_doppler(self, s):
+    def get_doppler(self, sy, sa):
         """used for doppler shift update, for determining which frame to provide next,
-        and for stopping at end of data/when the signal quality is too low"""
-        print('-------------------- get_doppler --------------------',self._counter)
-        success,doppler = self.quality_preamble(s) if self._counter == 0 else self.quality_data(s)
+        and for stopping at end of data/when the signal quality is too low
+        sy ... equalized symbols; sa ... samples"""
+        print('-------------------- get_doppler --------------------',self._counter,len(sy),len(sa))
+        success,doppler = self.quality_preamble(sy,sa) if self._counter == 0 else self.quality_data(sy)
         self._counter = (self._counter+1)&1 if success else 0
         self._is_first_frame = not success
         return success,doppler
 
-    def quality_preamble(self, s):
+    def quality_preamble(self, sy, sa):
+        sps  = 5
+        zp   = [x for x in self._preamble[0]['symb'][9:40] for i in range(sps)]
+        cc   = np.array([np.sum(sa[ i*5:(31+i)*5]*zp) for i in range(49)])
+        imax = np.argmax(np.abs(cc[0:18]))
+        pks  = cc[(imax,imax+15,imax+16,imax+31),]
+        apks = np.abs(pks)
+        test = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
+        doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/31 if test else 0
         idx = range(80)
         if self._is_first_frame:
-            idx = range(30,80)
-        z = s[idx]*np.conj(self._preamble[0]['symb'][idx])
+           idx = range(30,80)
+        z = sy[idx]*np.conj(self._preamble[0]['symb'][idx])
         success = np.sum(np.real(z)<0) < 30
-        doppler = PhysicalLayer.data_aided_frequency_estimation(s[idx], self._preamble[0]['symb'][idx])
         return success,doppler
 
     def quality_data(self, s):
