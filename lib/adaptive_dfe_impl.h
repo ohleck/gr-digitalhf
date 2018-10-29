@@ -63,6 +63,8 @@ private:
   std::vector<gr_complex> _descrambled_symbols;
   int _symbol_counter;
 
+  bool _need_samples;
+
   // PLL for doppler tracking
   float _df;     // frequency offset in radians per sample
   float _phase;  // accumulated phase for frequency correction
@@ -71,12 +73,17 @@ private:
 
   enum state {
     WAIT_FOR_PREAMBLE,
+    INITIAL_DOPPLER_ESTIMATE,
+    INITIAL_DOPPLER_ESTIMATE_CONTINUE,
     DO_FILTER
   } _state;
 
   void update_constellations(boost::python::object obj);
-  void update_frame_information(boost::python::object obj);
-  void update_doppler_information(boost::python::object obj);
+  bool update_frame_information(boost::python::object obj);
+  bool update_doppler_information(boost::python::object obj);
+
+  void update_local_oscillator();
+  gr_complex filter();
 
   void insert_sample(gr_complex z);
   void update_pll(float doppler);

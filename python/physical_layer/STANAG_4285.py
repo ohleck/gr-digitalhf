@@ -6,56 +6,72 @@ from gnuradio import digital
 class PhysicalLayer(object):
     """Physical layer description for STANAG 4285"""
 
-    def __init__(self, mode=0):
-        """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
-        self._constellations = [PhysicalLayer.make_psk(2, [0,1]),
-                                PhysicalLayer.make_psk(4, [0,1,3,2]),
-                                PhysicalLayer.make_psk(8, [1,0,2,3,6,7,5,4])]
-        self._preamble = [PhysicalLayer.get_preamble(), 0] ## BPSK
-        self._data     = [PhysicalLayer.get_data(),  mode] ## according to the mode
-        self._counter  = 0
-        self._is_first_frame  = True
+    MODE_BPSK=0
+    MODE_QPSK=1
+    MODE_8PSK=2
+
+    def __init__(self, sps):
+        """intialization"""
+        self._sps     = sps
+        self._mode    = self.MODE_BPSK
+        self._frame_counter = 0
+        self._is_first_frame = True
+        self._constellations = [self.make_psk(2, [0,1]),
+                                self.make_psk(4, [0,1,3,2]),
+                                self.make_psk(8, [1,0,2,3,6,7,5,4])]
+        self._preamble = self.get_preamble()
+        self._data     = self.get_data()
 
     def set_mode(self, mode):
-        """For STANAG 4258 the mode has to be set manually: mode=0 -> BPSK, mode=1 -> QPSK, mode=2 -> 8PSK"""
+        """set phase modultation type"""
         print('set_mode', mode)
-        self._data[1] = int(mode)
+        self._mode = int(mode)
 
     def get_constellations(self):
         return self._constellations
 
     def get_frame(self):
-        """returns the known+unknown symbols and scrambling"""
-        print('-------------------- get_frame --------------------',self._counter)
-        return self._preamble if self._counter == 0 else self._data
+        """returns a tuple describing the frame:
+        [0] ... known+unknown symbols and scrambling
+        [1] ... modulation type after descrambling
+        [2] ... a boolean indicating whethere or not raw IQ samples needed"""
+        print('-------------------- get_frame --------------------', self._frame_counter)
+        return [self._preamble,self.MODE_BPSK,True] if self.is_preamble() else [self._data,self._mode,False]
 
-    def get_doppler(self, sy, sa):
-        """used for doppler shift update, for determining which frame to provide next,
-        and for stopping at end of data/when the signal quality is too low
-        sy ... equalized symbols; sa ... samples"""
-        print('-------------------- get_doppler --------------------',self._counter,len(sy),len(sa))
-        success,doppler = self.quality_preamble(sy,sa) if self._counter == 0 else self.quality_data(sy)
-        self._counter = (self._counter+1)&1 if success else 0
-        self._is_first_frame = not success
+    def get_doppler(self, symbols, iq_samples):
+        """returns a tuple
+        [0] ... quality flag
+        [1] ... doppler estimate (rad/symbol) if available"""
+        print('-------------------- get_doppler --------------------', self._frame_counter,len(symbols),len(iq_samples))
+        success,doppler = self.quality_preamble(symbols,iq_samples) if self.is_preamble() else self.quality_data(symbols)
+        if len(symbols) != 0:
+            self._frame_counter = (self._frame_counter+1)&1 if success else 0
+            self._is_first_frame = not success
         return success,doppler
 
-    def quality_preamble(self, sy, sa):
-        sps  = 5
-        zp   = [x for x in self._preamble[0]['symb'][9:40] for i in range(sps)]
-        cc   = np.array([np.sum(sa[ i*5:(31+i)*5]*zp) for i in range(49)])
-        imax = np.argmax(np.abs(cc[0:18]))
-        pks  = cc[(imax,imax+15,imax+16,imax+31),]
-        apks = np.abs(pks)
-        test = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
-        doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/31 if test else 0
-        idx = range(80)
-        if self._is_first_frame:
-           idx = range(30,80)
-        z = sy[idx]*np.conj(self._preamble[0]['symb'][idx])
-        success = np.sum(np.real(z)<0) < 30
+    def is_preamble(self):
+        return self._frame_counter == 0
+
+    def quality_preamble(self, symbols, iq_samples):
+        """quality check and doppler estimation for preamble"""
+        success = True
+        doppler = 0
+        if len(iq_samples) != 0:
+            zp   = [x for x in self._preamble['symb'][9:40] for i in range(self._sps)]
+            cc   = np.array([np.sum(iq_samples[ i*5:(31+i)*5]*zp) for i in range(49)])
+            imax = np.argmax(np.abs(cc[0:18]))
+            pks  = cc[(imax,imax+15,imax+16,imax+31),]
+            apks = np.abs(pks)
+            success = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
+            doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/31 if success else 0
+        if len(symbols) != 0:
+            idx = range(30,80) if self._is_first_frame else range(80)
+            z = symbols[idx]*np.conj(self._preamble['symb'][idx])
+            success = np.sum(np.real(z)<0) < 30
         return success,doppler
 
     def quality_data(self, s):
+        """quality check for the data frame"""
         known_symbols = np.mod(range(176),48)>=32
         success = np.sum(np.real(s[known_symbols])<0) < 20
         return success,0 ## no doppler estimate for data frames
@@ -87,7 +103,7 @@ class PhysicalLayer(object):
             for j in range(3):
                 state = np.concatenate(([np.sum(state&taps)&1], state[0:-1]))
         a=np.zeros(176, dtype=[('symb',np.complex64), ('scramble', np.complex64)])
-        ## PSK-8 modulation
+        ## 8PSK modulation
         constellation = PhysicalLayer.make_psk(8,range(8))['points']
         a['scramble'] = constellation[p,]
         known_symbols = np.mod(range(176),48)>=32
@@ -96,11 +112,13 @@ class PhysicalLayer(object):
 
     @staticmethod
     def make_psk(n, gray_code):
+        """generates n-PSK constellation data"""
         c = np.zeros(n, dtype=[('points', np.complex64), ('symbols', np.uint8)])
         c['points']  = np.exp(2*np.pi*1j*np.array(range(n))/n)
         c['symbols'] = gray_code
         return c
 
+    ## for now not used (doppler estimation after adaptive filtering does not work)
     @staticmethod
     def data_aided_frequency_estimation(x,c):
         """Data-Aided Frequency Estimation for Burst Digital Transmission,

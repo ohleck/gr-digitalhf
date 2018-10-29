@@ -242,7 +242,7 @@
     </param>
     <param>
       <key>label0</key>
-      <value>PSK</value>
+      <value>BPSK</value>
     </param>
     <param>
       <key>label1</key>
@@ -282,7 +282,7 @@
     </param>
     <param>
       <key>option2</key>
-      <value>'1'</value>
+      <value>'2'</value>
     </param>
     <param>
       <key>option3</key>
@@ -802,7 +802,7 @@
     </param>
     <param>
       <key>repeat</key>
-      <value>False</value>
+      <value>True</value>
     </param>
   </block>
   <block>
