@@ -64,6 +64,10 @@ private:
   int _symbol_counter;
 
   bool _need_samples;
+  bool _save_soft_decisions;
+  std::vector<float> _vec_soft_decisions;
+  pmt::pmt_t         _msg_port_name;
+  pmt::pmt_t         _msg_metadata;
 
   // PLL for doppler tracking
   float _df;     // frequency offset in radians per sample

@@ -28,7 +28,7 @@
 #include "adaptive_dfe_impl.h"
 
 #define VOLK_SAFE_DELETE(x) \
-  volk_free(x);        \
+  volk_free(x);             \
   x = nullptr
 
 namespace gr {
@@ -108,12 +108,17 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _descrambled_symbols()
   , _symbol_counter(0)
   , _need_samples(false)
+  , _save_soft_decisions(false)
+  , _vec_soft_decisions()
+  , _msg_port_name(pmt::mp("soft_dec"))
+  , _msg_metadata(pmt::make_dict())
   , _df(0)
   , _phase(0)
   , _b{0.338187046465954, -0.288839024460507}
   , _ud(0)
   , _state(WAIT_FOR_PREAMBLE)
 {
+  message_port_register_out(_msg_port_name);
 }
 
 /*
@@ -121,6 +126,8 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
  */
 adaptive_dfe_impl::~adaptive_dfe_impl()
 {
+  _msg_port_name = pmt::PMT_NIL;
+  _msg_metadata  = pmt::PMT_NIL;
   VOLK_SAFE_DELETE(_taps_samples);
   VOLK_SAFE_DELETE(_taps_symbols);
   VOLK_SAFE_DELETE(_hist_samples);
@@ -246,6 +253,14 @@ adaptive_dfe_impl::general_work(int noutput_items,
             update_doppler_information(_physicalLayer.attr("get_doppler")
                                        (complex_vector_to_ndarray(_descrambled_symbols),
                                         complex_vector_to_ndarray(_samples)));
+            if (!_vec_soft_decisions.empty()) {
+              unsigned int const bits_per_symbol = _constellations[_constellation_index]->bits_per_symbol();
+              _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("bits_per_symbol"), pmt::from_long(bits_per_symbol));
+              message_port_pub(_msg_port_name,
+                               pmt::cons(_msg_metadata,
+                                         pmt::init_f32vector(_vec_soft_decisions.size(), _vec_soft_decisions)));
+              _vec_soft_decisions.clear();
+            }
             _samples.clear();
             update_frame_information(_physicalLayer.attr("get_frame")());
           } catch (boost::python::error_already_set const&) {
@@ -340,18 +355,19 @@ gr_complex adaptive_dfe_impl::filter() {
     gr_complex descrambled_symbol = 0;
     constell->map_to_points(jc, &descrambled_symbol);
 
-    // make soft decisions
-    float const err = std::abs(descrambled_filter_output - descrambled_symbol);
-    _npwr_counter[_constellation_index] += (_npwr_counter[_constellation_index] < _npwr_max_time_constant);
-    float const alpha = 1.0f/_npwr_counter[_constellation_index];
-    _npwr[_constellation_index] = (1-alpha)*_npwr[_constellation_index] + alpha*err;
-    std::vector<float> soft_dec = constell->calc_soft_dec(descrambled_filter_output, _npwr[_constellation_index]);
-    // std::cout << "soft_dec " << _npwr[_constellation_index] << " : ";
-    // for (int k=0; k<soft_dec.size(); ++k) {
-    //   std::cout << soft_dec[k] << " ";
-    // }
-    // std::cout << "\n";
-
+    if (_save_soft_decisions) {
+      float const err = std::abs(descrambled_filter_output - descrambled_symbol);
+      _npwr_counter[_constellation_index] += (_npwr_counter[_constellation_index] < _npwr_max_time_constant);
+      float const alpha = 1.0f/_npwr_counter[_constellation_index];
+      _npwr[_constellation_index] = (1-alpha)*_npwr[_constellation_index] + alpha*err;
+      std::vector<float> const soft_dec = constell->calc_soft_dec(descrambled_filter_output, _npwr[_constellation_index]);
+      std::copy(soft_dec.begin(), soft_dec.end(), std::back_inserter<std::vector<float> >(_vec_soft_decisions));
+      // std::cout << "soft_dec " << _npwr[_constellation_index] << " : ";
+      // for (int k=0; k<soft_dec.size(); ++k) {
+      //   std::cout << soft_dec[k] << " ";
+      // }
+      // std::cout << "\n";
+    }
     known_symbol = _scramble[_symbol_counter] * descrambled_symbol;
   }
   gr_complex err =  filter_output - known_symbol;
@@ -419,7 +435,7 @@ void adaptive_dfe_impl::update_constellations(boost::python::object obj)
 bool adaptive_dfe_impl::update_frame_information(boost::python::object obj)
 {
   int const n = boost::python::extract<int>(obj.attr("__len__")());
-  assert(n==3);
+  assert(n==4);
   boost::python::numpy::ndarray array = boost::python::numpy::array(obj[0]);
   char const* data = array.get_data();
   int  const     m = array.shape(0);
@@ -434,6 +450,7 @@ bool adaptive_dfe_impl::update_frame_information(boost::python::object obj)
   }
   _constellation_index = boost::python::extract<int> (obj[1]);
   _need_samples        = boost::python::extract<bool>(obj[2]);
+  _save_soft_decisions = boost::python::extract<bool>(obj[3]);
   return true;
 }
 bool adaptive_dfe_impl::update_doppler_information(boost::python::object obj)

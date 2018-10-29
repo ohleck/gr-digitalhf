@@ -34,9 +34,10 @@ class PhysicalLayer(object):
         """returns a tuple describing the frame:
         [0] ... known+unknown symbols and scrambling
         [1] ... modulation type after descrambling
-        [2] ... a boolean indicating whethere or not raw IQ samples needed"""
+        [2] ... a boolean indicating whethere or not raw IQ samples needed
+        [3] ... a boolean indicating if the soft decision for the unknown symbols are saved"""
         print('-------------------- get_frame --------------------', self._frame_counter)
-        return [self._preamble,self.MODE_BPSK,True] if self.is_preamble() else [self._data,self._mode,False]
+        return [self._preamble,self.MODE_BPSK,True,False] if self.is_preamble() else [self._data,self._mode,False,True]
 
     def get_doppler(self, symbols, iq_samples):
         """returns a tuple

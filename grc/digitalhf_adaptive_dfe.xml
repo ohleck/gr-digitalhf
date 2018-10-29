@@ -73,4 +73,10 @@
     <type>complex</type>
      <!-- byte, short, xxx_vector -->
   </source>
+
+  <source>
+    <name>soft_dec</name>
+    <type>message</type>
+    <optional>1</optional>
+  </source>
 </block>
