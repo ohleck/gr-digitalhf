@@ -68,12 +68,14 @@ class PhysicalLayer(object):
         if len(symbols) != 0:
             idx = range(30,80) if self._is_first_frame else range(80)
             z = symbols[idx]*np.conj(self._preamble['symb'][idx])
+            print('quality_preamble',np.sum(np.real(z)<0))
             success = np.sum(np.real(z)<0) < 30
         return success,doppler
 
     def quality_data(self, s):
         """quality check for the data frame"""
         known_symbols = np.mod(range(176),48)>=32
+        print('quality_data',np.sum(np.real(s[known_symbols])<0))
         success = np.sum(np.real(s[known_symbols])<0) < 20
         return success,0 ## no doppler estimate for data frames
 

@@ -158,6 +158,9 @@ if(NOT CPPUNIT_FOUND)
     message(FATAL_ERROR "CppUnit required to compile digitalhf")
 endif()
 
+include(GrMiscUtils)
+GR_LOGGING()
+
 ########################################################################
 # Setup doxygen option
 ########################################################################

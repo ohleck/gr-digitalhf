@@ -22,9 +22,14 @@
 #include "config.h"
 #endif
 
-#include <gnuradio/io_signature.h>
+#include <boost/format.hpp>
+
 #include <gnuradio/expj.h>
+#include <gnuradio/io_signature.h>
+#include <gnuradio/logger.h>
+
 #include <volk/volk.h>
+
 #include "adaptive_dfe_impl.h"
 
 #define VOLK_SAFE_DELETE(x) \
@@ -96,6 +101,8 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _hist_symbols(nullptr)
   , _hist_sample_index(0)
   , _hist_symbol_index(0)
+  , _ignore_filter_updates(0)
+  , _saved_samples()
   , _sample_counter(0)
   , _constellations()
   , _npwr()
@@ -118,6 +125,8 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _ud(0)
   , _state(WAIT_FOR_PREAMBLE)
 {
+  GR_LOG_DECLARE_LOGPTR(d_logger);
+  GR_LOG_ASSIGN_LOGPTR(d_logger, "adaptive_dfe");
   message_port_register_out(_msg_port_name);
 }
 
@@ -152,11 +161,11 @@ adaptive_dfe_impl::general_work(int noutput_items,
 
   int nout = 0;
   int i = 0;
-  for (; i<ninput_items[0] && nout < noutput_items; ++i) {
+  for (; i<ninput_items[0] && nout < noutput_items;) {
     assert(nout < noutput_items);
 
     if (_state == WAIT_FOR_PREAMBLE) {
-      insert_sample(in[i]);
+      insert_sample(in[i++]);
       uint64_t offset = 0;
       float phase_est = 0;
       if (get_correlation_tag(i, offset, phase_est)) {
@@ -168,12 +177,14 @@ adaptive_dfe_impl::general_work(int noutput_items,
         _descrambled_symbols.clear();
         // _hist_sample_index = 0;
         _hist_symbol_index = 0;
+        _ignore_filter_updates = 0;
+        _saved_samples.clear();
         std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
         std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
         std::fill_n(_taps_symbols, _nW, gr_complex(0));
         _samples.clear();
         _phase = -phase_est;
-        _taps_samples[_nB+1] = 1;
+        _taps_samples[_nB+1] = 0.01;
         _taps_symbols[0] = 1;
         GILLock gil_lock;
         try {
@@ -224,11 +235,11 @@ adaptive_dfe_impl::general_work(int noutput_items,
         }
         continue;
       }
-      _samples.push_back(in[i]);
+      _samples.push_back(in[i++]);
     } // INITIAL_DOPPLER_ESTIMATE_CONTINUE
 
     if (_state == INITIAL_DOPPLER_ESTIMATE_CONTINUE) {
-      std::cout << "INITIAL_DOPPLER_ESTIMATE_CONTINUE\n";
+      GR_LOG_DEBUG(d_logger, "INITIAL_DOPPLER_ESTIMATE_CONTINUE");
       while (!_samples.empty() && nout < noutput_items) {
         insert_sample(_samples.back());
         _sample_counter += 1;
@@ -246,13 +257,15 @@ adaptive_dfe_impl::general_work(int noutput_items,
 
     if (_state == DO_FILTER) {
       if ((_sample_counter%_sps) == 0) {
-        if (_symbol_counter == _symbols.size()) {
+        if (_symbol_counter == _symbols.size()) { // frame is ready
           _symbol_counter = 0;
           GILLock gil_lock;
           try {
+            // update doppler estimate
             update_doppler_information(_physicalLayer.attr("get_doppler")
                                        (complex_vector_to_ndarray(_descrambled_symbols),
                                         complex_vector_to_ndarray(_samples)));
+            // publish soft decisions
             if (!_vec_soft_decisions.empty()) {
               unsigned int const bits_per_symbol = _constellations[_constellation_index]->bits_per_symbol();
               _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("bits_per_symbol"), pmt::from_long(bits_per_symbol));
@@ -262,16 +275,31 @@ adaptive_dfe_impl::general_work(int noutput_items,
               _vec_soft_decisions.clear();
             }
             _samples.clear();
+            // get information about the following frame
             update_frame_information(_physicalLayer.attr("get_frame")());
           } catch (boost::python::error_already_set const&) {
             PyErr_Print();
           }
+        } // frame is ready
+        if (_ignore_filter_updates == 0) {
+          out[nout++] = filter();
+          if (_symbol_counter+1 == _symbols.size())
+            recenter_filter_taps();
+        } else {
+          _ignore_filter_updates -= 1;
         }
-        out[nout++] = filter();
-      }
-      insert_sample(in[i]);
-      if (_need_samples)
+      } // (_sample_counter%_sps) == 0
+
+
+      if (_need_samples) {
         _samples.push_back(_hist_samples[_hist_sample_index+_nB+1]);
+      }
+      if (_saved_samples.empty()) {
+        insert_sample(in[i++]);
+      } else {
+        insert_sample(_saved_samples.back());
+        _saved_samples.pop_back();
+      }
       _sample_counter += 1;
     } // DO_FILTER
   } // next input sample
@@ -306,10 +334,11 @@ bool adaptive_dfe_impl::start()
   std::fill_n(_taps_samples,   (_nB+_nF+1), gr_complex(0));
   std::fill_n(_taps_symbols,           _nW, gr_complex(0));
 
-  _taps_samples[_nB+1] = 1;
+  _taps_samples[_nB+1] = 0.01;
   _taps_symbols[0]     = 1;
 
-  std::cout << "adaptive_dfe_impl::start() " << _nB << " " << _nF << " " << _mu << " " << _alpha << std::endl;
+  GR_LOG_DEBUG(d_logger,str(boost::format("adaptive_dfe_impl::start() nB=%d nF=%d mu=%f alpha=%f")
+                             % _nB % _nF % _mu % _alpha));
   GILLock gil_lock;
   try {
     boost::python::object module        = boost::python::import(boost::python::str("digitalhf.physical_layer." + _py_module_name));
@@ -325,7 +354,7 @@ bool adaptive_dfe_impl::start()
 bool adaptive_dfe_impl::stop()
 {
   gr::thread::scoped_lock lock(d_setlock);
-  std::cout << "adaptive_dfe_impl::stop()" << std::endl;
+  GR_LOG_DEBUG(d_logger, "adaptive_dfe_impl::stop()");
   GILLock gil_lock;
   _physicalLayer = boost::python::object();
   VOLK_SAFE_DELETE(_taps_samples);
@@ -334,6 +363,7 @@ bool adaptive_dfe_impl::stop()
   VOLK_SAFE_DELETE(_hist_symbols);
   return true;
 }
+
 gr_complex adaptive_dfe_impl::filter() {
   gr_complex filter_output = 0;
   volk_32fc_x2_dot_prod_32fc(&filter_output,
@@ -371,17 +401,10 @@ gr_complex adaptive_dfe_impl::filter() {
     known_symbol = _scramble[_symbol_counter] * descrambled_symbol;
   }
   gr_complex err =  filter_output - known_symbol;
-  int jMax=0;
-  float tMax=0;
   for (int j=0; j<_nB+_nF+1; ++j) {
     assert(_hist_sample_index+j < 2*(_nB+_nF+1));
     _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
-    // if (std::abs(_taps_samples[j]) > tMax) {
-    //   tMax = std::abs(_taps_samples[j]);
-    //   jMax = j;
-    // }
   }
-  // std::cout << "taps_max: " << jMax << " " << tMax << std::endl;
   for (int j=0; j<_nW; ++j) {
     assert(_hist_symbol_index+j < 2*_nW);
     _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
@@ -397,9 +420,49 @@ gr_complex adaptive_dfe_impl::filter() {
   return filter_output*std::conj(_scramble[_symbol_counter++]);
 }
 
+void adaptive_dfe_impl::recenter_filter_taps() {
+  // get max(abs(taps))
+  ssize_t const idx_max = std::distance(_taps_samples,
+                                        std::max_element(_taps_samples+_nB+1-3*_sps, _taps_samples+_nB+1+3*_sps,
+                                                         [](gr_complex a, gr_complex b) {
+                                                           return std::norm(a) < std::norm(b);
+                                                         }));
+  GR_LOG_DEBUG(d_logger, str(boost::format("idx_max=%2d abs(tap_max)=%f") % idx_max % std::abs(_taps_samples[idx_max])));
+
+  if (idx_max-_nB-1 >= 2*_sps && _saved_samples.empty() && _ignore_filter_updates==0) {
+    // maximum is right of the center tap
+    //   -> shift taps to the left left
+    GR_LOG_DEBUG(d_logger, "shift left");
+    std::copy(_taps_samples+2*_sps, _taps_samples+_nB+_nF+1, _taps_samples);
+    std::fill_n(_taps_samples+_nB+_nF+1-2*_sps, 2*_sps, gr_complex(0));
+    //      and omit the next two calls to filter in order to keep the alignment between samples and taps
+    _ignore_filter_updates = 2;
+
+  } else if (idx_max-_nB-1 <= -2*_sps && _saved_samples.empty() && _ignore_filter_updates==0) {
+    // maximum is left of the center tap
+    //   -> shift taps to the right
+    GR_LOG_DEBUG(d_logger, "shift right");
+    std::copy_backward(_taps_samples, _taps_samples+_nB+_nF+1-2*_sps,
+                       _taps_samples+_nB+_nF+1);
+    std::fill_n(_taps_samples, 2*_sps, gr_complex(0));
+    //      save the last 2*_sps samples (will be reinserted)
+    _saved_samples.resize(2*_sps);
+    std::reverse_copy(_hist_samples+_hist_sample_index+(_nB+_nF+1)-2*_sps,
+                      _hist_samples+_hist_sample_index+(_nB+_nF+1),
+                      _saved_samples.begin());
+    //      shift samples index
+    _hist_sample_index += (_nB+_nF+1)-2*_sps;
+    _hist_sample_index %= (_nB+_nF+1);
+    //      set the 1st 2*_sps unknown old samples to zero
+    for (int l=_hist_sample_index; l<_hist_sample_index+2*_sps; ++l) {
+      int const k = (l+_nB+_nF+1)%(2*(_nB+_nF+1));
+      _hist_samples[l] = _hist_samples[k] = gr_complex(0);
+    }
+  }
+}
 void adaptive_dfe_impl::set_mode(std::string mode) {
   gr::thread::scoped_lock lock(d_setlock);
-  std::cout << "adaptive_dfe_impl::set_mode " << mode << std::endl;
+  GR_LOG_DEBUG(d_logger, "adaptive_dfe_impl::set_mode "+ mode);
   GILLock gil_lock;
   try {
     _physicalLayer.attr("set_mode")(mode);
@@ -483,14 +546,15 @@ void adaptive_dfe_impl::update_pll(float doppler) {
     _ud  = delta_f;
     _df +=_b[0]*_ud + _b[1]*ud_old;
   }
-  std::cout << "PLL: " << _df << " " << delta_f << std::endl;
+  GR_LOG_DEBUG(d_logger, str(boost::format("PLL: df=%f delta_f=%f (rad/symb)") % _df % delta_f));
 }
 void adaptive_dfe_impl::insert_sample(gr_complex z) {
   // insert sample into the circular buffer
   _hist_samples[_hist_sample_index] = _hist_samples[_hist_sample_index+_nB+_nF+1] = z * gr_expj(-_phase);
   if (++_hist_sample_index == _nB+_nF+1)
     _hist_sample_index = 0;
-  update_local_oscillator();
+  if (z != gr_complex(0))
+    update_local_oscillator();
 }
 void adaptive_dfe_impl:: update_local_oscillator() {
   _phase += _df;
@@ -503,7 +567,7 @@ bool adaptive_dfe_impl::get_correlation_tag(uint64_t i, uint64_t& offset, float&
   std::vector<tag_t> v;
   get_tags_in_window(v, 0, i,i+1);
   for (int j=0; j<v.size(); ++j) {
-    std::cout << "tag " << v[j].key << " " << v[j].offset-nitems_read(0) << std::endl;
+    std::cout << "tag " << v[j].key << " " << v[j].offset-nitems_read(0) << " " << v[j].value << std::endl;
     if (v[j].key == pmt::mp("phase_est")) {
       phase_est = pmt::to_double(v[j].value);
       std::cout << "phase_est " << v[j].offset <<" " << nitems_read(0) << " " << phase_est << std::endl;

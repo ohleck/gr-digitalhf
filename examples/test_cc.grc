@@ -317,7 +317,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>0.002</value>
+      <value>0.001</value>
     </param>
     <param>
       <key>_enabled</key>
@@ -353,15 +353,15 @@
     </param>
     <param>
       <key>start</key>
-      <value>0</value>
+      <value>0.0001</value>
     </param>
     <param>
       <key>step</key>
-      <value>0.001</value>
+      <value>0.0001</value>
     </param>
     <param>
       <key>stop</key>
-      <value>0.02</value>
+      <value>0.01</value>
     </param>
     <param>
       <key>rangeType</key>
@@ -396,7 +396,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>15</value>
+      <value>9</value>
     </param>
   </block>
   <block>
@@ -423,7 +423,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>15</value>
+      <value>9</value>
     </param>
   </block>
   <block>
@@ -454,6 +454,49 @@
     </param>
   </block>
   <block>
+    <key>variable_rrc_filter_taps</key>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>True</value>
+    </param>
+    <param>
+      <key>alpha</key>
+      <value>0.25</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(469, 352)</value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>gain</key>
+      <value>1.0</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>rrc_taps</value>
+    </param>
+    <param>
+      <key>ntaps</key>
+      <value>11*sps</value>
+    </param>
+    <param>
+      <key>samp_rate</key>
+      <value>samp_rate</value>
+    </param>
+    <param>
+      <key>sym_rate</key>
+      <value>samp_rate/sps</value>
+    </param>
+  </block>
+  <block>
     <key>variable</key>
     <param>
       <key>comment</key>
@@ -477,7 +520,7 @@
     </param>
     <param>
       <key>value</key>
-      <value>12000</value>
+      <value>12001</value>
     </param>
   </block>
   <block>
@@ -774,7 +817,7 @@
     </param>
     <param>
       <key>file</key>
-      <value>/Users/chm/Downloads/julusdalen.proxy.kiwisdr.com_2018-10-28T17_36_28Z_4644.80_iq.wav</value>
+      <value>/Users/chm/Downloads/kiwi-sm2gct.mooo.com_2018-10-30T10_35_39Z_8700.00_iq.wav</value>
     </param>
     <param>
       <key>_coordinate</key>
@@ -874,6 +917,112 @@
     <param>
       <key>py_obj_name</key>
       <value>STANAG_4285</value>
+    </param>
+  </block>
+  <block>
+    <key>fir_filter_xxx</key>
+    <param>
+      <key>alias</key>
+      <value></value>
+    </param>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>affinity</key>
+      <value></value>
+    </param>
+    <param>
+      <key>decim</key>
+      <value>1</value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>True</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(330, 293)</value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>fir_filter_xxx_0</value>
+    </param>
+    <param>
+      <key>maxoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>minoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>samp_delay</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>taps</key>
+      <value>rrc_taps</value>
+    </param>
+    <param>
+      <key>type</key>
+      <value>ccc</value>
+    </param>
+  </block>
+  <block>
+    <key>fractional_resampler_xx</key>
+    <param>
+      <key>alias</key>
+      <value></value>
+    </param>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>affinity</key>
+      <value></value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>1</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(96, 293)</value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>fractional_resampler_xx_0</value>
+    </param>
+    <param>
+      <key>maxoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>minoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>phase_shift</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>resamp_ratio</key>
+      <value>12001./11999.*0+1</value>
+    </param>
+    <param>
+      <key>type</key>
+      <value>complex</value>
     </param>
   </block>
   <block>
@@ -2315,13 +2464,13 @@
   </connection>
   <connection>
     <source_block_id>blocks_multiply_const_vxx_0</source_block_id>
-    <sink_block_id>blocks_throttle_0</sink_block_id>
+    <sink_block_id>fractional_resampler_xx_0</sink_block_id>
     <source_key>0</source_key>
     <sink_key>0</sink_key>
   </connection>
   <connection>
     <source_block_id>blocks_throttle_0</source_block_id>
-    <sink_block_id>preamble</sink_block_id>
+    <sink_block_id>fir_filter_xxx_0</sink_block_id>
     <source_key>0</source_key>
     <sink_key>0</sink_key>
   </connection>
@@ -2348,6 +2497,18 @@
     <sink_block_id>qtgui_time_sink_x_1</sink_block_id>
     <source_key>soft_dec</source_key>
     <sink_key>in</sink_key>
+  </connection>
+  <connection>
+    <source_block_id>fir_filter_xxx_0</source_block_id>
+    <sink_block_id>preamble</sink_block_id>
+    <source_key>0</source_key>
+    <sink_key>0</sink_key>
+  </connection>
+  <connection>
+    <source_block_id>fractional_resampler_xx_0</source_block_id>
+    <sink_block_id>blocks_throttle_0</sink_block_id>
+    <source_key>0</source_key>
+    <sink_key>0</sink_key>
   </connection>
   <connection>
     <source_block_id>preamble</source_block_id>

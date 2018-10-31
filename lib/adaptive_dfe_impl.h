@@ -50,7 +50,10 @@ private:
   int _hist_sample_index;
   int _hist_symbol_index;
 
-  std::size_t _sample_counter;
+  int _ignore_filter_updates;
+  std::vector<gr_complex> _saved_samples;
+
+  uint64_t _sample_counter;
 
   std::vector<gr::digital::constellation_sptr> _constellations;
   std::vector<float> _npwr;
@@ -88,6 +91,7 @@ private:
 
   void update_local_oscillator();
   gr_complex filter();
+  void recenter_filter_taps();
 
   void insert_sample(gr_complex z);
   void update_pll(float doppler);
