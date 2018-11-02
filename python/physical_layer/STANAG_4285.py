@@ -1,7 +1,6 @@
 ## -*- python -*-
 
 import numpy as np
-from gnuradio import digital
 
 class PhysicalLayer(object):
     """Physical layer description for STANAG 4285"""
