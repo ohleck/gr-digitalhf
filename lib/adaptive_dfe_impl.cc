@@ -159,68 +159,93 @@ adaptive_dfe_impl::general_work(int noutput_items,
   gr_complex const* in = (gr_complex const *)input_items[0];
   gr_complex *out = (gr_complex *)output_items[0];
 
-  int nout = 0;
-  int i = 0;
+  int nout = 0; // counter for produced output items
+  int i    = 0; // counter for consumed input items
   for (; i<ninput_items[0] && nout < noutput_items;) {
     assert(nout < noutput_items);
-
-    if (_state == WAIT_FOR_PREAMBLE) {
-      insert_sample(in[i++]);
-      uint64_t offset = 0;
-      float phase_est = 0;
-      if (get_correlation_tag(i, offset, phase_est)) {
-        _state = INITIAL_DOPPLER_ESTIMATE;
-        _sample_counter = 0;
-        _symbol_counter = 0;
-        // _symbols.clear();
-        // _scramble.clear();
-        _descrambled_symbols.clear();
-        // _hist_sample_index = 0;
-        _hist_symbol_index = 0;
-        _ignore_filter_updates = 0;
-        _saved_samples.clear();
-        std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
-        std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
-        std::fill_n(_taps_symbols, _nW, gr_complex(0));
-        _samples.clear();
-        _phase = -phase_est;
-        _taps_samples[_nB+1] = 0.01;
-        _taps_symbols[0] = 1;
-        GILLock gil_lock;
-        try {
-          update_frame_information(_physicalLayer.attr("get_frame")());
-        } catch (boost::python::error_already_set const&) {
-          PyErr_Print();
-        }
-      }
-    } // WAIT_FOR_PREAMBLE
-
-    if (_state == INITIAL_DOPPLER_ESTIMATE) {
-      // buffer samples and replay them later once the initial doppler estimate is there
-      if (_samples.size() == _sps * _symbols.size()) {
-        GILLock gil_lock;
-        try {
-          std::vector<gr_complex> const empty_vec;
-          // initial doppler estimate
-          if (!update_doppler_information(_physicalLayer.attr("get_doppler")
-                                          (complex_vector_to_ndarray(empty_vec),
-                                           complex_vector_to_ndarray(_samples)))) {
-            _state = WAIT_FOR_PREAMBLE;
-            continue;
+    switch (_state) {
+      case WAIT_FOR_PREAMBLE: {
+        insert_sample(in[i++]);
+        uint64_t offset = 0;
+        float phase_est = 0;
+        if (get_correlation_tag(i, offset, phase_est)) {
+          GR_LOG_DEBUG(d_logger, "next state > INITIAL_DOPPLER_ESTIMATE");
+          _state = INITIAL_DOPPLER_ESTIMATE;
+          _sample_counter = 0;
+          _symbol_counter = 0;
+          // _symbols.clear();
+          // _scramble.clear();
+          _descrambled_symbols.clear();
+          // _hist_sample_index = 0;
+          _hist_symbol_index = 0;
+          _ignore_filter_updates = 0;
+          _saved_samples.clear();
+          std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
+          std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
+          std::fill_n(_taps_symbols, _nW, gr_complex(0));
+          _samples.clear();
+          _phase = -phase_est;
+          _taps_samples[_nB+1] = 0.01;
+          _taps_symbols[0] = 1;
+          GILLock gil_lock;
+          try {
+            update_frame_information(_physicalLayer.attr("get_frame")());
+          } catch (boost::python::error_already_set const&) {
+            PyErr_Print();
           }
-        } catch (boost::python::error_already_set const&) {
-          PyErr_Print();
         }
-        // (1) correct all samples in the circular buffer with the inital doppler estimate
-        for (int j=_nB+1; j<_nB+_nF+1; ++j) {
-          assert(_hist_sample_index+j < 2*(_nB+_nF+1));
-          _hist_samples[_hist_sample_index+j] *= gr_expj(-_phase);
-          update_local_oscillator();
+        break;
+      } // WAIT_FOR_PREAMBLE
+
+      case INITIAL_DOPPLER_ESTIMATE: {
+        _samples.push_back(in[i++]);
+        // buffer samples and replay them later once the initial doppler estimate is there
+        if (_samples.size() == _sps * _symbols.size()) {
+          GILLock gil_lock;
+          try {
+            std::vector<gr_complex> const empty_vec;
+            // initial doppler estimate
+            if (!update_doppler_information(_physicalLayer.attr("get_doppler")
+                                            (complex_vector_to_ndarray(empty_vec),
+                                             complex_vector_to_ndarray(_samples)))) {
+              GR_LOG_DEBUG(d_logger, "next state > WAIT_FOR_PREAMBLE");
+              _state = WAIT_FOR_PREAMBLE;
+              break;
+            }
+          } catch (boost::python::error_already_set const&) {
+            PyErr_Print();
+          }
+          // (1) correct all samples in the circular buffer with the inital doppler estimate
+          for (int j=_nB+1; j<_nB+_nF+1; ++j) {
+            assert(_hist_sample_index+j < 2*(_nB+_nF+1));
+            _hist_samples[_hist_sample_index+j] *= gr_expj(-_phase);
+            update_local_oscillator();
+          }
+          // (2) insert all buffered samples and run the adaptive filter for them
+          //      instead of pop_front() we first reverse _samples and then insert back() + pop_back()
+          //      O(N) instead of O(N^2)
+          std::reverse(_samples.begin(), _samples.end());
+          while (!_samples.empty() && nout < noutput_items) {
+            insert_sample(_samples.back());
+            _sample_counter += 1;
+            _samples.pop_back();
+            if ((_sample_counter%_sps) == 0)
+              out[nout++] = filter();
+          }
+          if (_samples.empty()) {
+            GR_LOG_DEBUG(d_logger,"next state > DO_FILTER");
+            _state = DO_FILTER;
+            break;
+          } else {
+            GR_LOG_DEBUG(d_logger, "next state > INITIAL_DOPPLER_ESTIMATE_CONTINUE");
+            _state = INITIAL_DOPPLER_ESTIMATE_CONTINUE;
+            break;
+          }
         }
-        // (2) insert all buffered samples and run the adaptive filter for them
-        //      instead of pop_front() we first reverse _samples and then insert back() + pop_back()
-        //      O(N) instead of O(N^2)
-        std::reverse(_samples.begin(), _samples.end());
+      } // INITIAL_DOPPLER_ESTIMATE_CONTINUE
+
+      case INITIAL_DOPPLER_ESTIMATE_CONTINUE: {
+        GR_LOG_DEBUG(d_logger, "INITIAL_DOPPLER_ESTIMATE_CONTINUE");
         while (!_samples.empty() && nout < noutput_items) {
           insert_sample(_samples.back());
           _sample_counter += 1;
@@ -229,79 +254,65 @@ adaptive_dfe_impl::general_work(int noutput_items,
             out[nout++] = filter();
         }
         if (_samples.empty()) {
+          GR_LOG_DEBUG(d_logger, "next state > DO_FILTER");
           _state = DO_FILTER;
         } else {
+          GR_LOG_DEBUG(d_logger, "next state > INITIAL_DOPPLER_ESTIMATE_CONTINUE");
           _state = INITIAL_DOPPLER_ESTIMATE_CONTINUE;
         }
-        continue;
-      }
-      _samples.push_back(in[i++]);
-    } // INITIAL_DOPPLER_ESTIMATE_CONTINUE
+        break;
+      } // INITIAL_DOPPLER_ESTIMATE_CONTINUE
 
-    if (_state == INITIAL_DOPPLER_ESTIMATE_CONTINUE) {
-      GR_LOG_DEBUG(d_logger, "INITIAL_DOPPLER_ESTIMATE_CONTINUE");
-      while (!_samples.empty() && nout < noutput_items) {
-        insert_sample(_samples.back());
-        _sample_counter += 1;
-        _samples.pop_back();
-        if ((_sample_counter%_sps) == 0)
-          out[nout++] = filter();
-      }
-      if (_samples.empty()) {
-        _state = DO_FILTER;
-      } else {
-        _state = INITIAL_DOPPLER_ESTIMATE_CONTINUE;
-      }
-      continue;
-    } // INITIAL_DOPPLER_ESTIMATE_CONTINUE
-
-    if (_state == DO_FILTER) {
-      if ((_sample_counter%_sps) == 0) {
-        if (_symbol_counter == _symbols.size()) { // frame is ready
-          _symbol_counter = 0;
-          GILLock gil_lock;
-          try {
-            // update doppler estimate
-            update_doppler_information(_physicalLayer.attr("get_doppler")
-                                       (complex_vector_to_ndarray(_descrambled_symbols),
-                                        complex_vector_to_ndarray(_samples)));
-            // publish soft decisions
-            if (!_vec_soft_decisions.empty()) {
-              unsigned int const bits_per_symbol = _constellations[_constellation_index]->bits_per_symbol();
-              _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("bits_per_symbol"), pmt::from_long(bits_per_symbol));
-              message_port_pub(_msg_port_name,
-                               pmt::cons(_msg_metadata,
-                                         pmt::init_f32vector(_vec_soft_decisions.size(), _vec_soft_decisions)));
-              _vec_soft_decisions.clear();
+      case DO_FILTER: {
+        if ((_sample_counter%_sps) == 0) {
+          if (_symbol_counter == _symbols.size()) { // frame is ready
+            _symbol_counter = 0;
+            GILLock gil_lock;
+            try {
+              // update doppler estimate
+              if (!update_doppler_information(_physicalLayer.attr("get_doppler")
+                                              (complex_vector_to_ndarray(_descrambled_symbols),
+                                               complex_vector_to_ndarray(_samples)))) {
+                GR_LOG_DEBUG(d_logger, "next state > WAIT_FOR_PREAMBLE");
+                _state = WAIT_FOR_PREAMBLE;
+                break;
+              }
+              // publish soft decisions
+              if (!_vec_soft_decisions.empty()) {
+                unsigned int const bits_per_symbol = _constellations[_constellation_index]->bits_per_symbol();
+                _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("bits_per_symbol"), pmt::from_long(bits_per_symbol));
+                message_port_pub(_msg_port_name,
+                                 pmt::cons(_msg_metadata,
+                                           pmt::init_f32vector(_vec_soft_decisions.size(), _vec_soft_decisions)));
+                _vec_soft_decisions.clear();
+              }
+              _samples.clear();
+              // get information about the following frame
+              update_frame_information(_physicalLayer.attr("get_frame")());
+            } catch (boost::python::error_already_set const&) {
+              PyErr_Print();
             }
-            _samples.clear();
-            // get information about the following frame
-            update_frame_information(_physicalLayer.attr("get_frame")());
-          } catch (boost::python::error_already_set const&) {
-            PyErr_Print();
+          } // frame is ready
+          if (_ignore_filter_updates == 0) {
+            out[nout++] = filter();
+            if (_symbol_counter+1 == _symbols.size())
+              recenter_filter_taps();
+          } else {
+            _ignore_filter_updates -= 1;
           }
-        } // frame is ready
-        if (_ignore_filter_updates == 0) {
-          out[nout++] = filter();
-          if (_symbol_counter+1 == _symbols.size())
-            recenter_filter_taps();
-        } else {
-          _ignore_filter_updates -= 1;
+        } // (_sample_counter%_sps) == 0
+        if (_need_samples) {
+          _samples.push_back(_hist_samples[_hist_sample_index+_nB+1]);
         }
-      } // (_sample_counter%_sps) == 0
-
-
-      if (_need_samples) {
-        _samples.push_back(_hist_samples[_hist_sample_index+_nB+1]);
-      }
-      if (_saved_samples.empty()) {
-        insert_sample(in[i++]);
-      } else {
-        insert_sample(_saved_samples.back());
-        _saved_samples.pop_back();
-      }
-      _sample_counter += 1;
-    } // DO_FILTER
+        if (_saved_samples.empty()) {
+          insert_sample(in[i++]);
+        } else {
+          insert_sample(_saved_samples.back());
+          _saved_samples.pop_back();
+        }
+        _sample_counter += 1;
+      } // DO_FILTER
+    } // switch _state
   } // next input sample
 
   consume(0, i);
@@ -522,7 +533,6 @@ bool adaptive_dfe_impl::update_doppler_information(boost::python::object obj)
   assert(n==2);
   bool  const do_continue = boost::python::extract<bool>(obj[0]);
   if (!do_continue) {
-    _state = WAIT_FOR_PREAMBLE;
     _phase = 0;
     _df    = 0;
     std::fill_n(_hist_samples, 2*(_nB+_nF+1), gr_complex(0));
