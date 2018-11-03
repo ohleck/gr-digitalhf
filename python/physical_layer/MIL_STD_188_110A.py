@@ -103,8 +103,7 @@ class PhysicalLayer(object):
     def __init__(self, sps):
         """intialization"""
         self._sps     = sps
-        self._frame_counter = 0
-        self._is_first_frame = True
+        self._frame_counter = -1
         self._constellations = [self.make_psk(2, [0,1]),
                                 self.make_psk(4, [0,1,3,2]),
                                 self.make_psk(8, [0,1,3,2,7,6,4,5])] ## TODO: check 8PSK gray code
@@ -127,24 +126,24 @@ class PhysicalLayer(object):
                 symbols are saved"""
         print('-------------------- get_frame --------------------',
               self._pre_counter, self._frame_counter)
+        ## --- preamble frame ----
         if self._pre_counter != 0:
             self._scr_data.reset()
             return [self._preamble,MODE_BPSK,True,False]
-        num_symb = 11520 if self._mode['interleaver'][0] == 'L' else 1440
-        a = np.zeros(num_symb, dtype=[('symb',     np.complex64),
-                                      ('scramble', np.complex64)])
-        n_known = self._mode['known']
+        ## ----- data frame ------
+        if self._frame_counter == self._num_frames_per_block:
+            self._frame_counter = 0
+        a = np.zeros(self._frame_len, dtype=[('symb',     np.complex64),
+                                             ('scramble', np.complex64)])
         n_unknown = self._mode['unknown']
-        counter_d1d2 = 0
-        for i in range(0,num_symb,n_known+n_unknown):
-            a['symb'][i          :i+n_unknown        ] = 0
-            a['symb'][i+n_unknown:i+n_unknown+n_known] = 1
-            if i>=num_symb-2*(n_unknown+n_known):
-                a['symb'][i+0:i+ 8] *= n_psk(2, WALSH[self._d1d2[counter_d1d2]][:])
-                a['symb'][i+8:i+16] *= n_psk(2, WALSH[self._d1d2[counter_d1d2]][:])
-                counter_d1d2 += 1
+        a['symb'] = 1;
+        a['symb'][0:n_unknown] = 0
+        if self._frame_counter >= self._num_frames_per_block-2:
+            idx_d1d2 = self._frame_counter - self._num_frames_per_block + 2;
+            a['symb'][n_unknown  :n_unknown+ 8] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
+            a['symb'][n_unknown+8:n_unknown+16] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
 
-        a['scramble'] = n_psk(8, np.array([self._scr_data.next() for _ in range(num_symb)]))
+        a['scramble'] = n_psk(8, np.array([self._scr_data.next() for _ in range(self._frame_len)]))
         a['symb']    *= a['scramble']
         self._frame_counter += 1
         return [a, self._mode['ci'],False,True]
@@ -157,35 +156,23 @@ class PhysicalLayer(object):
               self._frame_counter,len(symbols),len(iq_samples))
         success = False
         doppler = 0
-        if self._frame_counter == 0:
-            success,doppler = self.quality_preamble(symbols,iq_samples)
+        if self._frame_counter == -1: ## -- preamble ----
+            success,doppler = self.get_doppler_from_preamble(symbols, iq_samples)
             if len(symbols) != 0:
-                data = [FROM_WALSH[walsh_to_num
-                                    (np.real
-                                     (np.sum
-                                      (symbols[i:i+32].reshape((4,8)),0))<0)]
-                        for i in range(0,15*32,32)]
-                print('data=',data)
-                self._pre_counter = sum((np.array(data[11:14])&3)
-                                        *(1<<2*np.arange(3)[::-1]))
-                self._d1d2 = data[9:11]
-                self._mode = MODE[data[9]][data[10]]
-                print('pre_counter', self._pre_counter, 'mode', self._mode)
-                self._is_first_frame = not success
-                success = True
-        else:
-            for i in range(0,len(symbols),40):
-                print(i,symbols[i:i+40], np.mean(np.abs(symbols[i:i+40])))
-            success = np.mean(np.abs(symbols[0:40])) > 0.5
+                success = self.decode_preamble(symbols)
+                if self._pre_counter == 0:
+                    self._frame_counter = 0
+                print('pre_counter', self._pre_counter,
+                      'mode', self._mode)
+        else: ## ------------------------ data frame ----
+            print(self._frame_counter,symbols, np.mean(np.abs(symbols)))
+            success = np.mean(np.abs(symbols[0:20])) > 0.5
             if not success:
-                self._frame_counter = 0
+                self._frame_counter = -1
                 self._pre_counter = -1
         return success,doppler
 
-    def is_preamble(self):
-        return self._frame_counter == 0
-
-    def quality_preamble(self, symbols, iq_samples):
+    def get_doppler_from_preamble(self, symbols, iq_samples):
         """quality check and doppler estimation for preamble"""
         success = True
         doppler = 0
@@ -206,9 +193,22 @@ class PhysicalLayer(object):
             success = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
             doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/(3*32) if success else 0
             print('success=', success, 'doppler=', doppler)
-        #if len(symbols) != 0:
-        ## TODO: check the symbols
         return success,doppler
+
+    def decode_preamble(self, symbols):
+        data = [FROM_WALSH[walsh_to_num
+                           (np.real
+                            (np.sum
+                             (symbols[i:i+32].reshape((4,8)),0))<0)]
+                for i in range(0,15*32,32)]
+        print('data=',data)
+        self._pre_counter = sum((np.array(data[11:14])&3)*(1<<2*np.arange(3)[::-1]))
+        self._d1d2 = data[9:11]
+        self._mode = MODE[data[9]][data[10]]
+        self._block_len = 11520 if self._mode['interleaver'][0] == 'L' else 1440
+        self._frame_len = self._mode['known'] + self._mode['unknown']
+        self._num_frames_per_block = self._block_len/self._frame_len;
+        return True
 
     @staticmethod
     def get_preamble():

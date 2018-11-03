@@ -546,7 +546,7 @@ void adaptive_dfe_impl::update_pll(float doppler) {
     _ud  = delta_f;
     _df +=_b[0]*_ud + _b[1]*ud_old;
   }
-  GR_LOG_DEBUG(d_logger, str(boost::format("PLL: df=%f delta_f=%f (rad/symb)") % _df % delta_f));
+  GR_LOG_DEBUG(d_logger, str(boost::format("PLL: df=%f delta_f=%f (rad/sample)") % _df % delta_f));
 }
 void adaptive_dfe_impl::insert_sample(gr_complex z) {
   // insert sample into the circular buffer
