@@ -9,7 +9,7 @@ def n_psk(n,x):
 ## ---- constellations -----------------------------------------------------------
 CONST_DTYPE=np.dtype([('points',  np.complex64),
                       ('symbols', np.uint8)])
-BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), range(2)), CONST_DTYPE)
+BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), [0,1]), CONST_DTYPE)
 QPSK=np.array(zip(np.exp(2j*np.pi*np.arange(4)/4), [0,1,3,2]), CONST_DTYPE)
 PSK8=np.array(zip(np.exp(2j*np.pi*np.arange(8)/8), [0,1,3,2,7,6,4,5]), CONST_DTYPE)
 QAM16=np.array(
@@ -79,7 +79,7 @@ class ScrambleData(object):
 
 ## ---- preamble definitions  ---------------------------------------------------
 ## 184 = 8*23
-PREAMBLE=np.array(
+PREAMBLE=n_psk(8, np.array(
     [1,5,1,3,6,1,3,1,1,6,3,7,7,3,5,4,3,6,6,4,5,4,0,
      2,2,2,6,0,7,5,7,4,0,7,5,7,1,6,1,0,5,2,2,6,2,3,
      6,0,0,5,1,4,2,2,2,3,4,0,6,2,7,4,3,3,7,2,0,2,6,
@@ -87,23 +87,27 @@ PREAMBLE=np.array(
      0,1,1,1,4,4,0,0,5,7,7,4,7,3,5,4,1,6,5,6,6,4,6,
      3,4,3,0,7,1,3,4,7,0,1,4,3,3,3,5,1,1,1,4,6,1,0,
      6,0,1,3,1,4,1,7,7,6,3,0,0,7,2,7,2,0,2,6,1,1,1,
-     2,7,7,5,3,3,6,0,5,3,3,1,0,7,1,1,0,3,0,4,0,7,3],
-    dtype=np.uint8)
+     2,7,7,5,3,3,6,0,5,3,3,1,0,7,1,1,0,3,0,4,0,7,3]))
 
 ## 103 = 31 + 1 + 3*13 + 1 + 31
-REINSERTED_PREAMBLE=np.array(
-    [0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,2,0,0,0,0,0,2,4,6,0,4,0,4,0,6,4, ## MP+
+REINSERTED_PREAMBLE=n_psk(8, np.array(
+    [0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,2,0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,   ## MP+
      2,
      0,4,0,4,0,0,4,4,0,0,0,0,0, # + D0
      0,4,0,4,0,0,4,4,0,0,0,0,0, # + D1
      0,4,0,4,0,0,4,4,0,0,0,0,0, # + D2
      6,
-     4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0], ## MP-
-    dtype=np.uint8)
+     4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0])) ## MP-
+## length 31
+MINI_PROBE_PLUS=n_psk(8, np.array(
+    [0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,2,0,0,0,0,0,2,4,6,0,4,0,4,0,6,4]))
+## length 31
+MINI_PROBE_MINUS=n_psk(8, np.array(
+    [4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0]))
 
 ## ---- physcal layer class -----------------------------------------------------
 class PhysicalLayer(object):
-    """Physical layer description for MIL-STD-188-110 Appendix D = STANAG 4539"""
+    """Physical layer description for MIL-STD-188-110 Appendix C = STANAG 4539"""
 
     def __init__(self, sps):
         """intialization"""
@@ -189,28 +193,24 @@ class PhysicalLayer(object):
         return success,doppler
 
     def make_reinserted_preamble(self):
-        a=np.zeros(len(REINSERTED_PREAMBLE), dtype=[('symb',     np.complex64),
-                                                    ('scramble', np.complex64)])
-        a['symb']     = n_psk(8, REINSERTED_PREAMBLE)
-        a['scramble'] = n_psk(8, REINSERTED_PREAMBLE)
+        a=np.array(zip(REINSERTED_PREAMBLE,
+                       REINSERTED_PREAMBLE),
+                   dtype=[('symb',     np.complex64),
+                          ('scramble', np.complex64)])
         a['symb'][32:32+3*13] = 0 ## D0,D1,D2
         return a
 
     @staticmethod
     def get_preamble():
         """preamble symbols + scrambler"""
-        a=np.zeros(len(PREAMBLE), dtype=[('symb',     np.complex64),
-                                         ('scramble', np.complex64)])
-        a['symb']     = n_psk(8, PREAMBLE)
-        a['scramble'] = n_psk(8, PREAMBLE)
-        ##a['symb'][-30:] = 0
-        return a
-
+        return np.array(zip(PREAMBLE,
+                            PREAMBLE),
+                        dtype=[('symb',     np.complex64),
+                               ('scramble', np.complex64)])
     @staticmethod
     def get_preamble_z(sps):
         """preamble symbols for preamble correlation"""
-        a = PhysicalLayer.get_preamble()
-        return np.array([z for z in a['symb'] for i in range(sps)])
+        return np.array([z for z in PREAMBLE for i in range(sps)])
 
 if __name__ == '__main__':
     print(PREAMBLE)
@@ -230,3 +230,6 @@ if __name__ == '__main__':
     print(PSK8)
     print(QPSK)
     print(BPSK)
+    print(MINI_PROBE_PLUS)
+    print(MINI_PROBE_MINUS)
+    print(MINI_PROBE_PLUS*MINI_PROBE_MINUS)
