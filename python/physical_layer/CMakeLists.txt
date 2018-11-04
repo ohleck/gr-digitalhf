@@ -34,6 +34,7 @@ GR_PYTHON_INSTALL(
     __init__.py
     STANAG_4285.py
     MIL_STD_188_110A.py
+    MIL_STD_188_110C.py
     DESTINATION ${GR_PYTHON_DIR}/digitalhf/physical_layer
 )
 
