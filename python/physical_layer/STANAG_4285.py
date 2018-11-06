@@ -57,13 +57,15 @@ class PhysicalLayer(object):
         success = True
         doppler = 0
         if len(iq_samples) != 0:
-            zp   = [x for x in self._preamble['symb'][9:40] for i in range(self._sps)]
-            cc   = np.array([np.sum(iq_samples[ i*5:(31+i)*5]*zp) for i in range(49)])
-            imax = np.argmax(np.abs(cc[0:18]))
-            pks  = cc[(imax,imax+15,imax+16,imax+31),]
-            apks = np.abs(pks)
-            success = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
-            doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/31 if success else 0
+            sps  = self._sps
+            zp   = np.array([x for x in self._preamble['symb'][9:40]
+                             for _ in range(sps)], dtype=np.complex64)
+            cc   = np.correlate(iq_samples, zp)
+            imax = np.argmax(np.abs(cc[0:18*sps]))
+            pks  = cc[(imax,imax+31*sps),]
+            tpks = cc[imax+15*sps:imax+16*sps]
+            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(tpks))
+            doppler = np.diff(np.unwrap(np.angle(pks)))[0]/31 if success else 0
         if len(symbols) != 0:
             idx = range(30,80) if self._is_first_frame else range(80)
             z = symbols[idx]*np.conj(self._preamble['symb'][idx])
@@ -102,7 +104,7 @@ class PhysicalLayer(object):
         p = np.zeros(176, dtype=np.uint8)
         for i in range(176):
             p[i] = np.sum(state[-3:]*[4,2,1])
-            for j in range(3):
+            for _ in range(3):
                 state = np.concatenate(([np.sum(state&taps)&1], state[0:-1]))
         a=np.zeros(176, dtype=[('symb',np.complex64), ('scramble', np.complex64)])
         ## 8PSK modulation
@@ -116,24 +118,6 @@ class PhysicalLayer(object):
     def make_psk(n, gray_code):
         """generates n-PSK constellation data"""
         c = np.zeros(n, dtype=[('points', np.complex64), ('symbols', np.uint8)])
-        c['points']  = np.exp(2*np.pi*1j*np.array(range(n))/n)
+        c['points']  = np.exp(2*np.pi*1j*np.arange(n)/n)
         c['symbols'] = gray_code
         return c
-
-    ## for now not used (doppler estimation after adaptive filtering does not work)
-    @staticmethod
-    def data_aided_frequency_estimation(x,c):
-        """Data-Aided Frequency Estimation for Burst Digital Transmission,
-        Umberto Mengali and M. Morelli, IEEE TRANSACTIONS ON COMMUNICATIONS,
-        VOL. 45, NO. 1, JANUARY 1997"""
-        z  = x*np.conj(c)                                      ## eq (2)
-        L0 = len(z)
-        N  = L0//2
-        R  = np.zeros(N, dtype=np.complex64)
-        for i in range(N):
-            R[i] = 1.0/(L0-i)*np.sum(z[i:]*np.conj(z[0:L0-i])) ## eq (3)
-        m  = np.array(range(N), dtype=np.float)
-        w  = 3*((L0-m)*(L0-m+1)-N*(L0-N))/(N*(4*N*N - 6*N*L0 + 3*L0*L0-1)) ## eq (9)
-        mod_2pi = lambda x : np.mod(x-np.pi, 2*np.pi) - np.pi
-        fd = np.sum(w[1:] * mod_2pi(np.diff(np.angle(R))))     ## eq (8)
-        return fd

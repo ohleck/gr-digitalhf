@@ -93,6 +93,7 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _nW(nW)
   , _mu(mu)
   , _alpha(alpha)
+  , _use_symbol_taps(true)
   , _py_module_name(python_module_name)
   , _physicalLayer()
   , _taps_samples(nullptr)
@@ -183,6 +184,7 @@ adaptive_dfe_impl::general_work(int noutput_items,
           std::fill_n(_hist_symbols, 2*_nW, gr_complex(0));
           std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
           std::fill_n(_taps_symbols, _nW, gr_complex(0));
+          _use_symbol_taps = true;
           _samples.clear();
           _phase = -phase_est;
           _taps_samples[_nB+1] = 0.01;
@@ -279,8 +281,10 @@ adaptive_dfe_impl::general_work(int noutput_items,
               }
               // publish soft decisions
               if (!_vec_soft_decisions.empty()) {
+                std::cout << "soft_dec " << _vec_soft_decisions.size() << "\n";
                 unsigned int const bits_per_symbol = _constellations[_constellation_index]->bits_per_symbol();
                 _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("bits_per_symbol"), pmt::from_long(bits_per_symbol));
+                _msg_metadata = pmt::dict_add(_msg_metadata, pmt::mp("packet_len"), pmt::mp(_vec_soft_decisions.size()));
                 message_port_pub(_msg_port_name,
                                  pmt::cons(_msg_metadata,
                                            pmt::init_f32vector(_vec_soft_decisions.size(), _vec_soft_decisions)));
@@ -382,16 +386,21 @@ gr_complex adaptive_dfe_impl::filter() {
                              _taps_samples,
                              _nB+_nF+1);
   gr_complex dot_symbols=0;
-  for (int l=0; l<_nW; ++l) {
-    assert(_hist_symbol_index+l < 2*_nW);
-    dot_symbols += _hist_symbols[_hist_symbol_index+l]*_taps_symbols[l];
+  gr::digital::constellation_sptr constell = _constellations[_constellation_index];
+  bool const update_taps = constell->bits_per_symbol() <= 3;
+  if (constell->bits_per_symbol() > 3)
+    _use_symbol_taps = false;
+  if (_use_symbol_taps) {
+    for (int l=0; l<_nW; ++l) {
+      assert(_hist_symbol_index+l < 2*_nW);
+      dot_symbols += _hist_symbols[_hist_symbol_index+l]*_taps_symbols[l];
+    }
+    filter_output += dot_symbols;
   }
-  filter_output += dot_symbols;
   gr_complex known_symbol = _symbols[_symbol_counter];
   bool const is_known     = std::abs(known_symbol) > 1e-5;
   if (not is_known) { // not known
     gr_complex const descrambled_filter_output = std::conj(_scramble[_symbol_counter]) * filter_output;
-    gr::digital::constellation_sptr   constell = _constellations[_constellation_index];
     unsigned int jc = constell->decision_maker(&descrambled_filter_output);
     gr_complex descrambled_symbol = 0;
     constell->map_to_points(jc, &descrambled_symbol);
@@ -403,29 +412,24 @@ gr_complex adaptive_dfe_impl::filter() {
       _npwr[_constellation_index] = (1-alpha)*_npwr[_constellation_index] + alpha*err;
       std::vector<float> const soft_dec = constell->calc_soft_dec(descrambled_filter_output, _npwr[_constellation_index]);
       std::copy(soft_dec.begin(), soft_dec.end(), std::back_inserter<std::vector<float> >(_vec_soft_decisions));
-      // std::cout << "soft_dec " << _npwr[_constellation_index] << " : ";
-      // for (int k=0; k<soft_dec.size(); ++k) {
-      //   std::cout << soft_dec[k] << " ";
-      // }
-      // std::cout << "\n";
     }
     known_symbol = _scramble[_symbol_counter] * descrambled_symbol;
   }
-  gr_complex err =  filter_output - known_symbol;
-  for (int j=0; j<_nB+_nF+1; ++j) {
-    assert(_hist_sample_index+j < 2*(_nB+_nF+1));
-    _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
-  }
-  for (int j=0; j<_nW; ++j) {
-    assert(_hist_symbol_index+j < 2*_nW);
-    _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
-  }
-  // if (_sample_counter < 80*5)
-  //   std::cout << "filter: " << _symbol_counter << " " << _sample_counter << " " << filter_output << " " << known_symbol << " " << std::abs(err) << std::endl;
-  if (is_known || true) {
-    _hist_symbols[_hist_symbol_index] = _hist_symbols[_hist_symbol_index + _nW] = known_symbol;
-    if (++_hist_symbol_index == _nW)
-      _hist_symbol_index = 0;
+  if (is_known || update_taps) {
+    gr_complex const err =  filter_output - known_symbol;
+    for (int j=0; j<_nB+_nF+1; ++j) {
+      assert(_hist_sample_index+j < 2*(_nB+_nF+1));
+      _taps_samples[j] -= _mu*err*std::conj(_hist_samples[_hist_sample_index+j]);
+    }
+    if (_use_symbol_taps) {
+      for (int j=0; j<_nW; ++j) {
+        assert(_hist_symbol_index+j < 2*_nW);
+        _taps_symbols[j] -= _mu*err*std::conj(_hist_symbols[_hist_symbol_index+j]) + _alpha*_taps_symbols[j];
+      }
+      _hist_symbols[_hist_symbol_index] = _hist_symbols[_hist_symbol_index + _nW] = known_symbol;
+      if (++_hist_symbol_index == _nW)
+        _hist_symbol_index = 0;
+    }
   }
   _descrambled_symbols[_symbol_counter] = filter_output*std::conj(_scramble[_symbol_counter]);
   return filter_output*std::conj(_scramble[_symbol_counter++]);

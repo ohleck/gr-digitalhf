@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import numpy as np
+from common import *
 
 ## ---- Walsh-4 codes -----------------------------------------------------------
 WALSH = np.array([[0,0,0,0, 0,0,0,0],
@@ -14,12 +15,9 @@ WALSH = np.array([[0,0,0,0, 0,0,0,0],
                   [0,1,1,0, 1,0,0,1]],
                  dtype=np.uint8)
 
-def walsh_to_num(w):
-    return sum(w*(1<<np.arange(8)[::-1]))
-
 FROM_WALSH = -np.ones(256, dtype=np.int8)
 for i in range(8):
-    FROM_WALSH[walsh_to_num(WALSH[i][:])] = i
+    FROM_WALSH[np.packbits(WALSH[i][:])[0]] = i
 
 ## ---- tri-bit codes -----------------------------------------------------------
 TRIBIT = np.zeros((8,32), dtype=np.uint8)
@@ -31,9 +29,6 @@ TRIBIT_SCRAMBLE = np.array(
     [7,4,3,0,5,1,5,0,2,2,1,1,5,7,4,3,5,0,2,6,2,1,6,2,0,0,5,0,5,2,6,6],
     dtype=np.uint8)
 
-def n_psk(n,x):
-    return np.complex64(np.exp(2j*np.pi*x/n))
-
 ## ---- preamble symbols ---------------------------------------------------------
 D1=D2=C1=C2=C3=0 ## not known
 PRE_SYMBOLS  = n_psk(2, np.concatenate(
@@ -41,7 +36,7 @@ PRE_SYMBOLS  = n_psk(2, np.concatenate(
 PRE_SYMBOLS[9*32:14*32] = 0
 
 ## ---- preamble scramble symbols ------------------------------------------------
-PRE_SCRAMBLE = n_psk(8, np.concatenate([TRIBIT_SCRAMBLE for i in range(15)]))
+PRE_SCRAMBLE = n_psk(8, np.concatenate([TRIBIT_SCRAMBLE for _ in range(15)]))
 
 ## ---- data scrambler -----------------------------------------------------------
 class ScrambleData(object):
@@ -50,13 +45,13 @@ class ScrambleData(object):
         self.reset()
 
     def reset(self):
-        self._state = 0xBAD
+        self._state   = 0xBAD
         self._counter = 0
 
     def next(self):
         if self._counter == 160:
             self.reset()
-        for j in range(8):
+        for _ in range(8):
             self._advance()
         self._counter += 1
         return self._state&7
@@ -68,13 +63,18 @@ class ScrambleData(object):
             self._state ^= 0x053
         return self._state
 
+## ---- constellatios -----------------------------------------------------------
+BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), [0,1]), CONST_DTYPE)
+QPSK=np.array(zip(np.exp(2j*np.pi*np.arange(4)/4), [0,1,3,2]), CONST_DTYPE)
+PSK8=np.array(zip(np.exp(2j*np.pi*np.arange(8)/8), [0,1,3,2,7,6,4,5]), CONST_DTYPE)
+
 ## ---- constellation indices ---------------------------------------------------
 MODE_BPSK=0
 MODE_QPSK=1
 MODE_8PSK=2
 
 ## ---- mode definitions --------------------------------------------------------
-MODE = [[{} for x in range(8)] for y  in range(8)]
+MODE = [[{} for _ in range(8)] for _  in range(8)]
 MODE[7][6] = {'bit_rate':4800, 'ci':MODE_8PSK, 'interleaver':['N',  1,  1], 'unknown':32,'known':16, 'nsymb': 1, 'coding_rate': -1 }
 MODE[7][7] = {'bit_rate':2400, 'ci':MODE_8PSK, 'interleaver':['N',  1,  1], 'unknown':32,'known':16, 'nsymb': 1, 'coding_rate':1./2}
 
@@ -104,15 +104,12 @@ class PhysicalLayer(object):
         """intialization"""
         self._sps     = sps
         self._frame_counter = -1
-        self._constellations = [self.make_psk(2, [0,1]),
-                                self.make_psk(4, [0,1,3,2]),
-                                self.make_psk(8, [0,1,3,2,7,6,4,5])] ## TODO: check 8PSK gray code
+        self._constellations = [BPSK, QPSK, PSK8]
         self._preamble    = self.get_preamble()
         self._pre_counter = -1
         self._d1d2        = [-1,-1] ## D1,D2
         self._mode        = {}
         self._scr_data    = ScrambleData()
-        ##self._data     = self.get_data()
 
     def get_constellations(self):
         return self._constellations
@@ -133,18 +130,19 @@ class PhysicalLayer(object):
         ## ----- data frame ------
         if self._frame_counter == self._num_frames_per_block:
             self._frame_counter = 0
-        a = np.zeros(self._frame_len, dtype=[('symb',     np.complex64),
-                                             ('scramble', np.complex64)])
+        scramble_for_frame = n_psk(8, np.array([self._scr_data.next()
+                                                for _ in range(self._frame_len)]))
+        a = np.array(zip(scramble_for_frame,
+                         scramble_for_frame),
+                     dtype=[('symb',     np.complex64),
+                            ('scramble', np.complex64)])
         n_unknown = self._mode['unknown']
-        a['symb'] = 1;
         a['symb'][0:n_unknown] = 0
         if self._frame_counter >= self._num_frames_per_block-2:
             idx_d1d2 = self._frame_counter - self._num_frames_per_block + 2;
             a['symb'][n_unknown  :n_unknown+ 8] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
             a['symb'][n_unknown+8:n_unknown+16] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
 
-        a['scramble'] = n_psk(8, np.array([self._scr_data.next() for _ in range(self._frame_len)]))
-        a['symb']    *= a['scramble']
         self._frame_counter += 1
         return [a, self._mode['ci'],False,True]
 
@@ -154,8 +152,7 @@ class PhysicalLayer(object):
         [1] ... doppler estimate (rad/symbol) if available"""
         print('-------------------- get_doppler --------------------',
               self._frame_counter,len(symbols),len(iq_samples))
-        success = False
-        doppler = 0
+        success,doppler = False,0
         if self._frame_counter == -1: ## -- preamble ----
             success,doppler = self.get_doppler_from_preamble(symbols, iq_samples)
             if len(symbols) != 0:
@@ -174,35 +171,37 @@ class PhysicalLayer(object):
 
     def get_doppler_from_preamble(self, symbols, iq_samples):
         """quality check and doppler estimation for preamble"""
-        success = True
-        doppler = 0
+        success,doppler = True,0
         if len(iq_samples) != 0:
-            zp   = np.conj(self.get_preamble_z(self._sps))[9*self._sps:]
-            cc   = np.array([np.sum(iq_samples[i*self._sps:(3*32+i-9)*self._sps]*zp)
-                             for i in range(4*32)])
-            acc = np.abs(cc)
-            for i in range(0,len(cc),32):
-                print('i=%3d: '%i,end='')
-                for j in range(32):
-                    print('%3.0f ' % acc[i+j], end='')
-                print()
-            imax = np.argmax(np.abs(cc[0:2*32]))
-            pks  = cc[(imax,imax+3*16,imax+3*16+1,imax+3*32),]
-            apks = np.abs(pks)
-            print('imax=', imax, 'apks=',apks)
-            success = np.mean(apks[(0,3),]) > 2*np.mean(apks[(1,2),])
-            doppler = np.diff(np.unwrap(np.angle(pks[(0,3),])))[0]/(3*32) if success else 0
+            sps  = self._sps
+            zp   = np.array([z for z in PhysicalLayer.get_preamble()['symb']
+                             for _ in range(sps)], dtype=np.complex64)
+            ## find starting point
+            cc   = np.correlate(iq_samples, zp[0:3*32*sps])
+            imax = np.argmax(np.abs(cc[0:2*32*sps]))
+            pks  = cc[(imax, imax+3*32*sps),]
+            tpks = cc[imax+3*16*sps:imax+5*16*sps]
+            print('imax=', imax, 'apks=',np.abs(pks),
+                  np.mean(np.abs(pks)), np.mean(np.abs(tpks)), np.abs(tpks))
+            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(tpks))
+            doppler = np.diff(np.unwrap(np.angle(pks)))[0]/(3*32) if success else 0
+            if success:
+                idx = np.arange(32*sps)
+                pks = [np.correlate(iq_samples[imax+i*32*sps+idx],
+                                    zp[i*32*sps+idx])[0]
+                       for i in range(9)]
+                doppler = freq_est(pks)/32
             print('success=', success, 'doppler=', doppler)
         return success,doppler
 
     def decode_preamble(self, symbols):
-        data = [FROM_WALSH[walsh_to_num
+        data = [FROM_WALSH[np.packbits
                            (np.real
                             (np.sum
-                             (symbols[i:i+32].reshape((4,8)),0))<0)]
+                             (symbols[i:i+32].reshape((4,8)),0))<0)[0]]
                 for i in range(0,15*32,32)]
         print('data=',data)
-        self._pre_counter = sum((np.array(data[11:14])&3)*(1<<2*np.arange(3)[::-1]))
+        self._pre_counter = sum([(x&3)*(1<<2*y) for (x,y) in zip(data[11:14][::-1], range(3))])
         self._d1d2 = data[9:11]
         self._mode = MODE[data[9]][data[10]]
         self._block_len = 11520 if self._mode['interleaver'][0] == 'L' else 1440
@@ -213,27 +212,17 @@ class PhysicalLayer(object):
     @staticmethod
     def get_preamble():
         """preamble symbols + scrambler"""
-        a=np.zeros(15*32, dtype=[('symb',     np.complex64),
-                                 ('scramble', np.complex64)])
-        a['symb']     = PRE_SCRAMBLE*PRE_SYMBOLS
-        a['scramble'] = PRE_SCRAMBLE
-        return a
+        return np.array(zip(PRE_SCRAMBLE*PRE_SYMBOLS,
+                            PRE_SCRAMBLE),
+                        dtype=[('symb',     np.complex64),
+                               ('scramble', np.complex64)])
 
     @staticmethod
     def get_preamble_z(sps):
         """preamble symbols for preamble correlation"""
         a = PhysicalLayer.get_preamble()
         return np.array([z for z in a['symb'][0:32*3]
-                         for i in range(sps)])
-
-    @staticmethod
-    def make_psk(n, gray_code):
-        """generates n-PSK constellation data"""
-        c = np.zeros(n, dtype=[('points',  np.complex64),
-                               ('symbols', np.uint8)])
-        c['points']  = n_psk(n,np.arange(n))
-        c['symbols'] = gray_code
-        return c
+                         for _ in range(sps)])
 
 if __name__ == '__main__':
     def gen_data_scramble():
@@ -245,13 +234,13 @@ if __name__ == '__main__':
         a = np.zeros(160, dtype=np.uint8)
         s = 0xBAD
         for i in range(160):
-            for j in range(8): s = advance(s)
+            for _ in range(8): s = advance(s)
             a[i] = s&7;
         return a
 
     p=PhysicalLayer(5)
-    z1=np.array([x for x in PRE_SYMBOLS  for i in range(5)])
-    z2=np.array([x for x in PRE_SCRAMBLE for i in range(5)])
+    z1=np.array([x for x in PRE_SYMBOLS  for _ in range(5)])
+    z2=np.array([x for x in PRE_SCRAMBLE for _ in range(5)])
     z=z1*z2
 
     for i in range(3):
@@ -264,6 +253,5 @@ if __name__ == '__main__':
     print(gen_data_scramble())
 
     s=ScrambleData()
-    print(type(s))
     print([s.next() for _ in range(160)])
     print([s.next() for _ in range(160)])

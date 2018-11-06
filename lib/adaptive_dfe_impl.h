@@ -37,6 +37,8 @@ private:
   float _mu;
   float _alpha;
 
+  bool _use_symbol_taps;
+
   // module name w.r.t. digitalhf.physical_layer containing a PhysicalLayer class
   std::string           _py_module_name;
   boost::python::object _physicalLayer; // class instance of physical layer description

@@ -2,13 +2,9 @@
 
 from __future__ import print_function
 import numpy as np
-
-def n_psk(n,x):
-    return np.complex64(np.exp(2j*np.pi*x/n))
+from common import *
 
 ## ---- constellations -----------------------------------------------------------
-CONST_DTYPE=np.dtype([('points',  np.complex64),
-                      ('symbols', np.uint8)])
 BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), [0,1]), CONST_DTYPE)
 QPSK=np.array(zip(np.exp(2j*np.pi*np.arange(4)/4), [0,1,3,2]), CONST_DTYPE)
 PSK8=np.array(zip(np.exp(2j*np.pi*np.arange(8)/8), [0,1,3,2,7,6,4,5]), CONST_DTYPE)
@@ -47,6 +43,10 @@ QAM64=np.array(
          -0.360142-0.932897j, -0.353057-0.588429j, -0.353057-0.117686j, -0.353057-0.353057j],
         range(64)), CONST_DTYPE)
 
+## for test
+QAM64 = QAM64[(7,3,24,56,35,39,60,28),]
+QAM64['symbols'] = [1, 0, 2, 6, 4, 5, 7, 3]
+
 ## ---- constellation indices ---------------------------------------------------
 MODE_BPSK  = 0
 MODE_QPSK  = 1
@@ -62,20 +62,18 @@ class ScrambleData(object):
         self.reset()
 
     def reset(self):
-        self._state = 1
+        self._state = np.array([0,0,0,0,0,0,0,0,1], dtype=np.bool)
+        self._taps =  np.array([0,0,0,0,1,0,0,0,1], dtype=np.bool)
 
     def next(self, num_bits):
-        r = self._state & ((1<<num_bits)-1)
-        for i in range(num_bits):
+        r = np.packbits(self._state[1:])[0]&((1<<num_bits)-1)
+        for _ in range(num_bits):
             self._advance()
         return r
 
     def _advance(self):
-        lsb = self._state&1
-        self._state = (self._state>>1)&511
-        if lsb:
-            self._state ^= 0x10B
-        return self._state
+        self._state = np.concatenate(([np.sum(self._state&self._taps)&1],
+                                      self._state[0:-1]))
 
 ## ---- preamble definitions  ---------------------------------------------------
 ## 184 = 8*23
@@ -132,10 +130,13 @@ class PhysicalLayer(object):
         ## --- preamble frame ----
         if self._frame_counter == -1:
             return [self._preamble,MODE_BPSK,True,False]
-        ## ----- data frame ------
+        ## ----- (re)inserted preamble ------
         if self._frame_counter == 0:
             self.a = self.make_reinserted_preamble()
-            return [self.a, MODE_QPSK,False,True]
+            return [self.a, MODE_QPSK,False,False]
+        if self._frame_counter >= 1:
+            self.a = self.make_data_frame()
+            return [self.a, MODE_64QAM,False,True]
 
     def get_doppler(self, symbols, iq_samples):
         """returns a tuple
@@ -145,50 +146,45 @@ class PhysicalLayer(object):
               self._frame_counter,len(symbols),len(iq_samples))
         #if len(symbols)!=0:
         #    print('symb=', symbols)
-        success = False
-        doppler = 0
+        success,doppler = False,0
         if self._frame_counter == -1: ## -- preamble ----
             success,doppler = self.get_doppler_from_preamble(symbols, iq_samples)
             if len(symbols) != 0:
                 for s in symbols:
                     print(s)
                 self._frame_counter = 0
+        elif self._frame_counter >= 0 and self._frame_counter <5: ## -- reinserted preamble ----
+            for s in symbols:
+                print(s)
+            self._frame_counter += 1
+            success = True
         else: ## ------------------------ data frame ----
-            if len(symbols) != 0:
-                for s in symbols:
-                    print(s)
+            for s in symbols:
+                print(s)
             success = False
             self._frame_counter = -1
         return success,doppler
 
     def get_doppler_from_preamble(self, symbols, iq_samples):
         """quality check and doppler estimation for preamble"""
-        success = True
-        doppler = 0
-        shift=9
+        success,doppler = True,0
         if len(iq_samples) != 0:
-            zp   = np.conj(self.get_preamble_z(self._sps)[shift*self._sps:])
-            cc   = np.array([np.sum(iq_samples[i:i+23*self._sps] *
-                                    zp[0:23*self._sps])
-                             for i in range(23*3*self._sps)])
-            acc = np.abs(cc)
-            for i in range(0,len(cc),23*self._sps):
-                print('i=%3d: '%i,end='')
-                for j in range(23*self._sps):
-                    print('%3.0f ' % acc[i+j], end='')
-                print()
-
-            imax = np.argmax(np.abs(cc[0:3*23*self._sps]))
-            print(imax)
-            pks  = np.array([np.sum(iq_samples[(imax+23*i*self._sps):
-                                               (imax+23*i*self._sps+23*self._sps)] *
-                                    zp[(23*i*self._sps):
-                                       (23*i*self._sps+23*self._sps)])
-                             for i in range(1,5)])
-            print('doppler apks', np.abs(pks))
-            print('doppler ppks', np.angle(pks), np.diff(np.unwrap(np.angle(pks)))/23)
-            doppler = np.mean(np.diff(np.unwrap(np.angle(pks))))/23
-            success = True
+            sps  = self._sps
+            idx  = np.arange(23*sps)
+            zp   = self.get_preamble_z(self._sps)
+            cc   = np.correlate(iq_samples, zp[idx])
+            imax = np.argmax(np.abs(cc[0:23*sps]))
+            pks  = [np.correlate(iq_samples[imax+i*23*sps+idx],
+                                 zp[i*23*sps+idx])[0]
+                    for i in range(7)]
+            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)]))
+            print('test:',imax, np.mean(np.abs(pks)), np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
+            if success:
+                print('doppler apks', np.abs(pks))
+                print('doppler ppks', np.angle(pks),
+                      np.diff(np.unwrap(np.angle(pks)))/23,
+                      np.mean(np.diff(np.unwrap(np.angle(pks)))/23))
+                doppler = freq_est(pks[1:])/23;
             print('success=', success, 'doppler=', doppler)
         return success,doppler
 
@@ -198,6 +194,13 @@ class PhysicalLayer(object):
                    dtype=[('symb',     np.complex64),
                           ('scramble', np.complex64)])
         a['symb'][32:32+3*13] = 0 ## D0,D1,D2
+        return a
+    def make_data_frame(self):
+        a=np.zeros(256+31,  dtype=[('symb',     np.complex64),
+                                   ('scramble', np.complex64)])
+        a['scramble'] = 1
+        a['symb'][256:]     = MINI_PROBE_MINUS
+        a['scramble'][256:] = MINI_PROBE_MINUS
         return a
 
     @staticmethod
@@ -210,7 +213,7 @@ class PhysicalLayer(object):
     @staticmethod
     def get_preamble_z(sps):
         """preamble symbols for preamble correlation"""
-        return np.array([z for z in PREAMBLE for i in range(sps)])
+        return np.array([z for z in PREAMBLE for _ in range(sps)])
 
 if __name__ == '__main__':
     print(PREAMBLE)
@@ -224,12 +227,16 @@ if __name__ == '__main__':
     print([s.next(1) for _ in range(511)])
     print([s.next(1) for _ in range(511)] ==
           [s.next(1) for _ in range(511)])
-    print(QAM64)
-    print(QAM32)
-    print(QAM16)
-    print(PSK8)
-    print(QPSK)
-    print(BPSK)
-    print(MINI_PROBE_PLUS)
-    print(MINI_PROBE_MINUS)
-    print(MINI_PROBE_PLUS*MINI_PROBE_MINUS)
+    #print(QAM64)
+    #print(QAM32)
+    #print(QAM16)
+    #print(PSK8)
+    #print(QPSK)
+    #print(BPSK)
+    #print(MINI_PROBE_PLUS)
+    #print(MINI_PROBE_MINUS)
+    #print(MINI_PROBE_PLUS*MINI_PROBE_MINUS)
+    #for i in range(len(QAM64)):
+    #    print(QAM64['points'][i])
+
+    print([s.next(6) for _ in range(256)])

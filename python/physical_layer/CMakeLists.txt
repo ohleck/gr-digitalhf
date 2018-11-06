@@ -32,6 +32,7 @@ endif()
 GR_PYTHON_INSTALL(
     FILES
     __init__.py
+    common.py
     STANAG_4285.py
     MIL_STD_188_110A.py
     MIL_STD_188_110C.py
