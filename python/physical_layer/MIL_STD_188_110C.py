@@ -97,11 +97,36 @@ REINSERTED_PREAMBLE=n_psk(8, np.array(
      6,
      4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0])) ## MP-
 ## length 31
-MINI_PROBE_PLUS=n_psk(8, np.array(
-    [0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,2,0,0,0,0,0,2,4,6,0,4,0,4,0,6,4]))
-## length 31
-MINI_PROBE_MINUS=n_psk(8, np.array(
-    [4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0]))
+MINI_PROBE=[n_psk(8, np.array([0,0,0,0,0,2,4,6,0,4,0,4,0,6,4,2,0,0,0,0,0,2,4,6,0,4,0,4,0,6,4])), ## sign = + (0)
+            n_psk(8, np.array([4,4,4,4,4,6,0,2,4,0,4,0,4,2,0,6,4,4,4,4,4,6,0,2,4,0,4,0,4,2,0]))] ## sign = - (1)
+
+## ---- di-bits ----------------------------------------------------------------
+TO_DIBIT=[(0,0),(0,1),(1,1),(1,0)]
+
+## ---- rate -------------------------------------------------------------------
+TO_RATE={(0,0,0): {'baud':    0, 'bits_per_symbol': 0},  ## reserved
+         (0,0,1): {'baud': 3200, 'bits_per_symbol': 2, 'ci': MODE_QPSK},
+         (0,1,0): {'baud': 4800, 'bits_per_symbol': 3, 'ci': MODE_8PSK},
+         (0,1,1): {'baud': 6400, 'bits_per_symbol': 4, 'ci': MODE_16QAM},
+         (1,0,0): {'baud': 8000, 'bits_per_symbol': 5, 'ci': MODE_32QAM},
+         (1,0,1): {'baud': 9600, 'bits_per_symbol': 6, 'ci': MODE_64QAM},
+         (1,1,0): {'baud':12800, 'bits_per_symbol': 6, 'ci': MODE_64QAM},
+         (1,1,1): {'baud':    0, 'bits_per_symbol': 0}}  ## reserved
+
+## ---- interleaver ------------------------------------------------------------
+TO_INTERLEAVER={(0,0,0): {'frames': -1, 'name': 'illegal'},
+                (0,0,1): {'frames':  1, 'name': 'Ultra Short (US)'},
+                (0,1,0): {'frames':  3, 'name': 'Very Short (VS)'},
+                (0,1,1): {'frames':  9, 'name': 'Short (S)'},
+                (1,0,0): {'frames': 18, 'name': 'Medium (M)'},
+                (1,0,1): {'frames': 36, 'name': 'Long (L)'},
+                (1,1,0): {'frames': 72, 'name': 'very Long (VL)'},
+                (1,1,1): {'frames': -1, 'name': 'illegal'}}
+
+MP_COUNTER=[(0,0,1),
+            (0,1,0),
+            (0,1,1),
+            (1,0,0)]
 
 ## ---- physcal layer class -----------------------------------------------------
 class PhysicalLayer(object):
@@ -113,7 +138,6 @@ class PhysicalLayer(object):
         self._frame_counter = -1
         self._constellations = [BPSK, QPSK, PSK8, QAM16, QAM32, QAM64]
         self._preamble = self.get_preamble()
-        self._scr_data = ScrambleData()
 
     def get_constellations(self):
         return self._constellations
@@ -129,14 +153,15 @@ class PhysicalLayer(object):
               self._frame_counter)
         ## --- preamble frame ----
         if self._frame_counter == -1:
+            self._preamble_offset = 0
             return [self._preamble,MODE_BPSK,True,False]
         ## ----- (re)inserted preamble ------
         if self._frame_counter == 0:
-            self.a = self.make_reinserted_preamble()
+            self.a = self.make_reinserted_preamble(self._preamble_offset)
             return [self.a, MODE_QPSK,False,False]
         if self._frame_counter >= 1:
             self.a = self.make_data_frame()
-            return [self.a, MODE_64QAM,False,True]
+            return [self.a, self._constellation_index,False,True]
 
     def get_doppler(self, symbols, iq_samples):
         """returns a tuple
@@ -153,12 +178,38 @@ class PhysicalLayer(object):
                 for s in symbols:
                     print(s)
                 self._frame_counter = 0
-        elif self._frame_counter >= 0 and self._frame_counter <5: ## -- reinserted preamble ----
-            for s in symbols:
-                print(s)
+        elif self._frame_counter == 0: ## -- reinserted preamble ----
+            ## decode D0,D1,D2
+            idx    = np.arange(13)
+            z      = np.array([np.mean(symbols[32+13*i+idx]) for i in range(3)])
+            d0d1d2 = map(np.uint8, np.mod(np.round(np.angle(z)/np.pi*2),4))
+            dibits = [TO_DIBIT[idx] for idx in d0d1d2]
+            self._mode = {'rate':        tuple([x[0] for x in dibits]),
+                          'interleaver': tuple([x[1] for x in dibits])}
+            print('======== rate,interleaver:',
+                  TO_RATE[self._mode['rate']],
+                  TO_INTERLEAVER[self._mode['interleaver']])
+            rate_info = TO_RATE[self._mode['rate']]
+            self._constellation_index = rate_info['ci']
+            print('constellation index', self._constellation_index)
+            scr = ScrambleData()
+            iscr = [scr.next(rate_info['bits_per_symbol']) for _ in range(256)]
+            if rate_info['ci'] > MODE_8PSK:
+                self._data_scramble = np.ones(256, dtype=np.complex64)
+            else:
+                constell = self._constellations[rate_info['ci']]
+                self._data_scramble = constell[iscr]
             self._frame_counter += 1
             success = True
-        else: ## ------------------------ data frame ----
+        elif self._frame_counter <=72: ## -- data -------------------
+            print(np.abs(symbols[:16]), symbols[-31:], np.mean(symbols[-31:]))
+            success = np.abs(np.mean(symbols[-31:])) > 0.5
+            if success:
+                self._frame_counter += 1
+            else:
+                self._frame_counter  = -1
+        else: ## ------------------------ re-inserted preamble -------
+            ## TODO
             for s in symbols:
                 print(s)
             success = False
@@ -188,19 +239,28 @@ class PhysicalLayer(object):
             print('success=', success, 'doppler=', doppler)
         return success,doppler
 
-    def make_reinserted_preamble(self):
-        a=np.array(zip(REINSERTED_PREAMBLE,
-                       REINSERTED_PREAMBLE),
+    def make_reinserted_preamble(self, offset):
+        """ offset=  0 -> 1st reinserted preamble
+            offset=-72 -> all following reinserted preambles"""
+        a=np.array(zip(REINSERTED_PREAMBLE[offset:],
+                       REINSERTED_PREAMBLE[offset:]),
                    dtype=[('symb',     np.complex64),
                           ('scramble', np.complex64)])
-        a['symb'][32:32+3*13] = 0 ## D0,D1,D2
+        a['symb'][-72:-72+3*13] = 0 ## D0,D1,D2
         return a
     def make_data_frame(self):
-        a=np.zeros(256+31,  dtype=[('symb',     np.complex64),
-                                   ('scramble', np.complex64)])
-        a['scramble'] = 1
-        a['symb'][256:]     = MINI_PROBE_MINUS
-        a['scramble'][256:] = MINI_PROBE_MINUS
+        self._preamble_offset = -72 ## all following reinserted preambles start at index -72
+        a=np.zeros(256+31, dtype=[('symb',     np.complex64),
+                                  ('scramble', np.complex64)])
+        a['scramble'][:256] = self._data_scramble
+        n = self._frame_counter -1
+        m = n%18
+        if m == 0:
+            cnt = n//18
+            self._mp = (1,1,1,1,1,1,1,0)+self._mode['rate']+self._mode['interleaver']+MP_COUNTER[cnt]+(0,)
+            print('new mini-probe signs n=',n,'m=',m,self._mp)
+        a['symb'][256:]     = MINI_PROBE[self._mp[m]]
+        a['scramble'][256:] = MINI_PROBE[self._mp[m]]
         return a
 
     @staticmethod
