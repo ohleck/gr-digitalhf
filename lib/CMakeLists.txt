@@ -26,7 +26,8 @@ include(GrPlatform) #define LIB_SUFFIX
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIRS})
 list(APPEND digitalhf_sources
-    adaptive_dfe_impl.cc )
+    adaptive_dfe_impl.cc
+    doppler_correction_cc_impl.cc )
 
 set(digitalhf_sources "${digitalhf_sources}" PARENT_SCOPE)
 if(NOT digitalhf_sources)
@@ -59,6 +60,7 @@ include_directories(${CPPUNIT_INCLUDE_DIRS})
 list(APPEND test_digitalhf_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/test_digitalhf.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/qa_digitalhf.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/qa_doppler_correction_cc.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/qa_adaptive_dfe.cc
     )
 
@@ -66,13 +68,11 @@ add_executable(test-digitalhf ${test_digitalhf_sources})
 
 target_link_libraries(
   test-digitalhf
-  ${PYTHON_LIBRARIES}
   ${GNURADIO_RUNTIME_LIBRARIES}
   ${Boost_LIBRARIES}
   ${CPPUNIT_LIBRARIES}
   gnuradio-digitalhf
 )
-MESSAGE("XXX ${PYTHON_LIBRARIES}")
 GR_ADD_TEST(test_digitalhf test-digitalhf)
 
 ########################################################################

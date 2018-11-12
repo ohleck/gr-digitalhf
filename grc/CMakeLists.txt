@@ -18,5 +18,8 @@
 # the Free Software Foundation, Inc., 51 Franklin Street,
 # Boston, MA 02110-1301, USA.
 install(FILES
-    digitalhf_adaptive_dfe.xml DESTINATION share/gnuradio/grc/blocks
+    digitalhf_adaptive_dfe.xml
+    digitalhf_physical_layer_driver.xml
+    digitalhf_doppler_correction_cc.xml
+    digitalhf_msg_proxy.xml DESTINATION share/gnuradio/grc/blocks
 )

@@ -9,7 +9,10 @@
 
 %{
 #include "digitalhf/adaptive_dfe.h"
+#include "digitalhf/doppler_correction_cc.h"
 %}
 
 %include "digitalhf/adaptive_dfe.h"
 GR_SWIG_BLOCK_MAGIC2(digitalhf, adaptive_dfe);
+%include "digitalhf/doppler_correction_cc.h"
+GR_SWIG_BLOCK_MAGIC2(digitalhf, doppler_correction_cc);

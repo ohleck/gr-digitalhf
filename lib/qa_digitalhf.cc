@@ -28,12 +28,14 @@
 
 #include "qa_digitalhf.h"
 #include "qa_adaptive_dfe.h"
+#include "qa_doppler_correction_cc.h"
 
 CppUnit::TestSuite *
 qa_digitalhf::suite()
 {
   CppUnit::TestSuite *s = new CppUnit::TestSuite("digitalhf");
   s->addTest(gr::digitalhf::qa_adaptive_dfe::suite());
+  s->addTest(gr::digitalhf::qa_doppler_correction_cc::suite());
 
   return s;
 }

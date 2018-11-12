@@ -3,7 +3,7 @@
 import numpy as np
 
 CONST_DTYPE=np.dtype([('points',  np.complex64),
-                      ('symbols', np.uint8)])
+                      ('symbols', np.int32)])
 
 def n_psk(n,x):
     """n-ary PSK constellation"""

@@ -1,16 +1,23 @@
 <?xml version="1.0"?>
 <block>
-  <name>adaptive_dfe</name>
-  <key>digitalhf_adaptive_dfe</key>
+  <name>physical_layer_driver</name>
+  <key>digitalhf_physical_layer_driver</key>
   <category>[digitalhf]</category>
   <import>import digitalhf</import>
-  <make>digitalhf.adaptive_dfe($sps,$nB,$nF,$nW,$mu,$alpha)</make>
+  <make>digitalhf.physical_layer_driver($samp_rate, $sps, $alpha, $mu, $nB, $nF, $nW, $description_name, $mode)</make>
   <callback>set_mu($mu)</callback>
-  <!-- Make one 'param' node for every Parameter you want settable from the GUI.
-       Sub-nodes:
-       * name
-       * key (makes the value accessible as $keyname, e.g. in the make node)
-       * type -->
+  <callback>set_alpha($alpha)</callback>
+  <callback>set_mode($mode)</callback>
+  <param>
+    <name>Description</name>
+    <key>description_name</key>
+    <type>string</type>
+  </param>
+  <param>
+    <name>sample rate</name>
+    <key>samp_rate</key>
+    <type>int</type>
+  </param>
   <param>
     <name>SPS</name>
     <key>sps</key>
@@ -41,26 +48,24 @@
     <key>alpha</key>
     <type>float</type>
   </param>
+  <param>
+    <name>mode</name>
+    <key>mode</key>
+    <type>string</type>
+  </param>
 
-  <!-- Make one 'sink' node per input. Sub-nodes:
-       * name (an identifier for the GUI)
-       * type
-       * vlen
-       * optional (set to 1 for optional inputs) -->
   <sink>
     <name>in</name>
     <type>complex</type>
   </sink>
 
-  <!-- Make one 'source' node per output. Sub-nodes:
-       * name (an identifier for the GUI)
-       * type
-       * vlen
-       * optional (set to 1 for optional inputs) -->
   <source>
-    <name>out</name>
+    <name>out_symb</name>
     <type>complex</type>
-     <!-- byte, short, xxx_vector -->
+  </source>
+  <source>
+    <name>out_cc</name>
+    <type>complex</type>
   </source>
 
   <source>

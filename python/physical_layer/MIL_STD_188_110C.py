@@ -44,8 +44,8 @@ QAM64=np.array(
         range(64)), CONST_DTYPE)
 
 ## for test
-QAM64 = QAM64[(7,3,24,56,35,39,60,28),]
-QAM64['symbols'] = [1, 0, 2, 6, 4, 5, 7, 3]
+#QAM64 = QAM64[(7,3,24,56,35,39,60,28),]
+#QAM64['symbols'] = [1, 0, 2, 6, 4, 5, 7, 3]
 
 ## ---- constellation indices ---------------------------------------------------
 MODE_BPSK  = 0
@@ -142,118 +142,111 @@ class PhysicalLayer(object):
     def get_constellations(self):
         return self._constellations
 
-    def get_frame(self):
+    def get_next_frame(self, symbols):
         """returns a tuple describing the frame:
         [0] ... known+unknown symbols and scrambling
         [1] ... modulation type after descrambling
-        [2] ... a boolean indicating whethere or not raw IQ samples needed
+        [2] ... a boolean indicating if the processing should continue
         [3] ... a boolean indicating if the soft decision for the unknown
                 symbols are saved"""
-        print('-------------------- get_frame --------------------',
-              self._frame_counter)
-        ## --- preamble frame ----
-        if self._frame_counter == -1:
+        print('-------------------- get_frame --------------------', self._frame_counter)
+        success = True
+        if self._frame_counter == -1: ## ---- preamble
             self._preamble_offset = 0
-            return [self._preamble,MODE_BPSK,True,False]
-        ## ----- (re)inserted preamble ------
-        if self._frame_counter == 0:
-            self.a = self.make_reinserted_preamble(self._preamble_offset)
-            return [self.a, MODE_QPSK,False,False]
-        if self._frame_counter >= 1:
-            self.a = self.make_data_frame()
-            return [self.a, self._constellation_index,False,True]
-
-    def get_doppler(self, symbols, iq_samples):
-        """returns a tuple
-        [0] ... quality flag
-        [1] ... doppler estimate (rad/symbol) if available"""
-        print('-------------------- get_doppler --------------------',
-              self._frame_counter,len(symbols),len(iq_samples))
-        #if len(symbols)!=0:
-        #    print('symb=', symbols)
-        success,doppler = False,0
-        if self._frame_counter == -1: ## -- preamble ----
-            success,doppler = self.get_doppler_from_preamble(symbols, iq_samples)
-            if len(symbols) != 0:
-                for s in symbols:
-                    print(s)
-                self._frame_counter = 0
-        elif self._frame_counter == 0: ## -- reinserted preamble ----
-            ## decode D0,D1,D2
-            idx    = np.arange(13)
-            z      = np.array([np.mean(symbols[32+13*i+idx]) for i in range(3)])
-            d0d1d2 = map(np.uint8, np.mod(np.round(np.angle(z)/np.pi*2),4))
-            dibits = [TO_DIBIT[idx] for idx in d0d1d2]
-            self._mode = {'rate':        tuple([x[0] for x in dibits]),
-                          'interleaver': tuple([x[1] for x in dibits])}
-            print('======== rate,interleaver:',
-                  TO_RATE[self._mode['rate']],
-                  TO_INTERLEAVER[self._mode['interleaver']])
-            rate_info = TO_RATE[self._mode['rate']]
-            self._constellation_index = rate_info['ci']
-            print('constellation index', self._constellation_index)
-            scr = ScrambleData()
-            iscr = [scr.next(rate_info['bits_per_symbol']) for _ in range(256)]
-            if rate_info['ci'] > MODE_8PSK:
-                self._data_scramble = np.ones(256, dtype=np.complex64)
-            else:
-                constell = self._constellations[rate_info['ci']]
-                self._data_scramble = constell[iscr]
             self._frame_counter += 1
-            success = True
-        elif self._frame_counter <=72: ## -- data -------------------
-            print(np.abs(symbols[:16]), symbols[-31:], np.mean(symbols[-31:]))
-            success = np.abs(np.mean(symbols[-31:])) > 0.5
-            if success:
-                self._frame_counter += 1
-            else:
-                self._frame_counter  = -1
-        else: ## ------------------------ re-inserted preamble -------
-            ## TODO
-            for s in symbols:
-                print(s)
-            success = False
-            self._frame_counter = -1
-        return success,doppler
+            return [self._preamble,MODE_BPSK,success,False]
 
-    def get_doppler_from_preamble(self, symbols, iq_samples):
+        frame_counter_mod = self._frame_counter%72
+        if frame_counter_mod == 0: ## --- re-inserted preamble
+            self._frame_counter += 1
+            success = self.get_preamble_quality(symbols)
+            return [self.make_reinserted_preamble(self._preamble_offset,success),MODE_QPSK,success,False]
+
+        if frame_counter_mod >= 1: ## ---- data frames
+            got_reinserted_preamble = frame_counter_mod == 1
+            self._frame_counter += 1
+            if got_reinserted_preamble:
+                success = self.decode_reinserted_preamble(symbols)
+            else:
+                success = self.get_data_frame_quality(symbols)
+            return [self.make_data_frame(success),self._constellation_index,success,not got_reinserted_preamble]
+
+    def get_doppler(self, iq_samples):
         """quality check and doppler estimation for preamble"""
         success,doppler = True,0
         if len(iq_samples) != 0:
             sps  = self._sps
             idx  = np.arange(23*sps)
-            zp   = self.get_preamble_z(self._sps)
+            _,zp = self.get_preamble_z()
             cc   = np.correlate(iq_samples, zp[idx])
             imax = np.argmax(np.abs(cc[0:23*sps]))
             pks  = [np.correlate(iq_samples[imax+i*23*sps+idx],
                                  zp[i*23*sps+idx])[0]
-                    for i in range(7)]
-            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)]))
+                    for i in range(8)]
+            success = np.bool(np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
             print('test:',imax, np.mean(np.abs(pks)), np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
             if success:
                 print('doppler apks', np.abs(pks))
                 print('doppler ppks', np.angle(pks),
                       np.diff(np.unwrap(np.angle(pks)))/23,
                       np.mean(np.diff(np.unwrap(np.angle(pks)))/23))
-                doppler = freq_est(pks[1:])/23;
+                doppler = freq_est(pks)/(23*sps);
             print('success=', success, 'doppler=', doppler)
         return success,doppler
 
-    def make_reinserted_preamble(self, offset):
+    def set_mode(self, mode):
+        pass
+
+    def get_preamble_quality(self, symbols):
+        return np.bool(np.abs(np.mean(symbols[-40:])) > 0.5)
+
+    def get_data_frame_quality(self, symbols):
+        return np.bool(np.abs(np.mean(symbols[-31:])) > 0.5)
+
+    def decode_reinserted_preamble(self, symbols):
+        ## decode D0,D1,D2
+        idx    = np.arange(13)
+        z      = np.array([np.mean(symbols[32+13*i+idx]) for i in range(3)])
+        d0d1d2 = map(np.uint8, np.mod(np.round(np.angle(z)/np.pi*2),4))
+        dibits = [TO_DIBIT[idx] for idx in d0d1d2]
+        self._mode = {'rate':        tuple([x[0] for x in dibits]),
+                      'interleaver': tuple([x[1] for x in dibits])}
+        print('======== rate,interleaver:',
+              TO_RATE[self._mode['rate']],
+              TO_INTERLEAVER[self._mode['interleaver']])
+        rate_info = TO_RATE[self._mode['rate']]
+        print('rate_info', rate_info)
+        self._constellation_index = rate_info['ci']
+        print('constellation index', self._constellation_index)
+        scr = ScrambleData()
+        iscr = [scr.next(rate_info['bits_per_symbol']) for _ in range(256)]
+        if rate_info['ci'] > MODE_8PSK:
+            self._data_scramble = np.ones(256, dtype=np.complex64)
+        else:
+            constell = self._constellations[rate_info['ci']]
+            self._data_scramble = constell[iscr]['points']
+        success = True ## TODO
+        return success
+
+    def make_reinserted_preamble(self, offset, success):
         """ offset=  0 -> 1st reinserted preamble
             offset=-72 -> all following reinserted preambles"""
+        print('make_reinserted_preamble', offset, success)
         a=np.array(zip(REINSERTED_PREAMBLE[offset:],
                        REINSERTED_PREAMBLE[offset:]),
                    dtype=[('symb',     np.complex64),
                           ('scramble', np.complex64)])
         a['symb'][-72:-72+3*13] = 0 ## D0,D1,D2
+        if not success:
+            sefl._frame_counter = -1
         return a
-    def make_data_frame(self):
+
+    def make_data_frame(self, success):
         self._preamble_offset = -72 ## all following reinserted preambles start at index -72
         a=np.zeros(256+31, dtype=[('symb',     np.complex64),
                                   ('scramble', np.complex64)])
         a['scramble'][:256] = self._data_scramble
-        n = self._frame_counter -1
+        n = (self._frame_counter-2)%72
         m = n%18
         if m == 0:
             cnt = n//18
@@ -261,6 +254,8 @@ class PhysicalLayer(object):
             print('new mini-probe signs n=',n,'m=',m,self._mp)
         a['symb'][256:]     = MINI_PROBE[self._mp[m]]
         a['scramble'][256:] = MINI_PROBE[self._mp[m]]
+        if not success:
+            self._frame_counter = -1
         return a
 
     @staticmethod
@@ -270,10 +265,10 @@ class PhysicalLayer(object):
                             PREAMBLE),
                         dtype=[('symb',     np.complex64),
                                ('scramble', np.complex64)])
-    @staticmethod
-    def get_preamble_z(sps):
+
+    def get_preamble_z(self):
         """preamble symbols for preamble correlation"""
-        return np.array([z for z in PREAMBLE for _ in range(sps)])
+        return 2,np.array([z for z in PREAMBLE for _ in range(self._sps)])
 
 if __name__ == '__main__':
     print(PREAMBLE)

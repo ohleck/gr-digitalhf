@@ -23,5 +23,6 @@
 ########################################################################
 install(FILES
     api.h
-    adaptive_dfe.h DESTINATION include/digitalhf
+    adaptive_dfe.h
+    doppler_correction_cc.h DESTINATION include/digitalhf
 )

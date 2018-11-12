@@ -1,6 +1,6 @@
 /* -*- c++ -*- */
 /*
- * Copyright 2018 hcab14@mail.com.
+ * Copyright 2018 hcab14@gmail.com.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,11 +19,11 @@
  */
 
 
-#ifndef INCLUDED_DIGITALHF_ADAPTIVE_DFE_H
-#define INCLUDED_DIGITALHF_ADAPTIVE_DFE_H
+#ifndef INCLUDED_DIGITALHF_DOPPLER_CORRECTION_CC_H
+#define INCLUDED_DIGITALHF_DOPPLER_CORRECTION_CC_H
 
 #include <digitalhf/api.h>
-#include <gnuradio/block.h>
+#include <gnuradio/sync_block.h>
 
 namespace gr {
 namespace digitalhf {
@@ -33,32 +33,26 @@ namespace digitalhf {
  * \ingroup digitalhf
  *
  */
-class DIGITALHF_API adaptive_dfe : virtual public gr::block
+class DIGITALHF_API doppler_correction_cc : virtual public gr::sync_block
 {
   public:
-  typedef boost::shared_ptr<adaptive_dfe> sptr;
+  typedef boost::shared_ptr<doppler_correction_cc> sptr;
 
-  virtual ~adaptive_dfe() {}
   /*!
-   * \brief Return a shared_ptr to a new instance of digitalhf::adaptive_dfe.
+   * \brief Return a shared_ptr to a new instance of digitalhf::doppler_correction_cc.
    *
-   * To avoid accidental use of raw pointers, digitalhf::adaptive_dfe's
+   * To avoid accidental use of raw pointers, digitalhf::doppler_correction_cc's
    * constructor is in a private implementation
-   * class. digitalhf::adaptive_dfe::make is the public interface for
+   * class. digitalhf::doppler_correction_cc::make is the public interface for
    * creating new instances.
    */
-  static sptr make(int sps, // samples per symbol
-                   int nB,  // number of forward FIR taps
-                   int nF,  // number of backward FIR taps
-                   int nW,  // number of feedback symbol taps
-                   float mu,     // mu    - decision-feedback equalizer
-                   float alpha); // alpha - decision-feedback equalizer
+  static sptr make(unsigned int preamble_length,
+                   unsigned int preamble_length_cc);
 
-  virtual void set_mu(float) = 0;
-  virtual void set_alpha(float) = 0;
-} ;
+};
 
 } // namespace digitalhf
 } // namespace gr
 
-#endif /* INCLUDED_DIGITALHF_ADAPTIVE_DFE_H */
+#endif /* INCLUDED_DIGITALHF_DOPPLER_CORRECTION_CC_H */
+

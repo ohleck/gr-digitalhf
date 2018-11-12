@@ -114,20 +114,35 @@ class PhysicalLayer(object):
     def get_constellations(self):
         return self._constellations
 
-    def get_frame(self):
+    def get_next_frame(self, symbols):
         """returns a tuple describing the frame:
         [0] ... known+unknown symbols and scrambling
         [1] ... modulation type after descrambling
-        [2] ... a boolean indicating whethere or not raw IQ samples needed
+        [2] ... a boolean indicating if the processing should continue
         [3] ... a boolean indicating if the soft decision for the unknown
                 symbols are saved"""
         print('-------------------- get_frame --------------------',
               self._pre_counter, self._frame_counter)
-        ## --- preamble frame ----
-        if self._pre_counter != 0:
-            self._scr_data.reset()
-            return [self._preamble,MODE_BPSK,True,False]
-        ## ----- data frame ------
+        success = True
+        if self._frame_counter == -1: ## preamble mode
+            if len(symbols) == 0:
+                return [self._preamble,MODE_BPSK,success,False]
+            else:
+                success = self.decode_preamble(symbols)
+                if self._pre_counter != 0:
+                    return [self._preamble,MODE_BPSK,success,False]
+                else:
+                    self._frame_counter = 0
+                    self._scr_data.reset()
+                    return [self.get_next_data_frame(success),self._mode['ci'],success,success]
+        else: ## data mode
+            self._frame_counter += 1
+            print('test:', symbols[self._mode['unknown']:], np.mean(np.real(symbols[self._mode['unknown']:])))
+            if self._frame_counter < self._num_frames_per_block-2:
+                success = np.bool(np.mean(np.real(symbols[self._mode['unknown']:])) > 0.7)
+            return [self.get_next_data_frame(success),self._mode['ci'],success,success]
+
+    def get_next_data_frame(self, success):
         if self._frame_counter == self._num_frames_per_block:
             self._frame_counter = 0
         scramble_for_frame = n_psk(8, np.array([self._scr_data.next()
@@ -142,34 +157,12 @@ class PhysicalLayer(object):
             idx_d1d2 = self._frame_counter - self._num_frames_per_block + 2;
             a['symb'][n_unknown  :n_unknown+ 8] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
             a['symb'][n_unknown+8:n_unknown+16] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
+        if not success:
+            self._frame_counter = -1
+            self._pre_counter = -1
+        return a
 
-        self._frame_counter += 1
-        return [a, self._mode['ci'],False,True]
-
-    def get_doppler(self, symbols, iq_samples):
-        """returns a tuple
-        [0] ... quality flag
-        [1] ... doppler estimate (rad/symbol) if available"""
-        print('-------------------- get_doppler --------------------',
-              self._frame_counter,len(symbols),len(iq_samples))
-        success,doppler = False,0
-        if self._frame_counter == -1: ## -- preamble ----
-            success,doppler = self.get_doppler_from_preamble(symbols, iq_samples)
-            if len(symbols) != 0:
-                success = self.decode_preamble(symbols)
-                if self._pre_counter == 0:
-                    self._frame_counter = 0
-                print('pre_counter', self._pre_counter,
-                      'mode', self._mode)
-        else: ## ------------------------ data frame ----
-            print(self._frame_counter,symbols, np.mean(np.abs(symbols)))
-            success = np.mean(np.abs(symbols[0:20])) > 0.5
-            if not success:
-                self._frame_counter = -1
-                self._pre_counter = -1
-        return success,doppler
-
-    def get_doppler_from_preamble(self, symbols, iq_samples):
+    def get_doppler(self, iq_samples):
         """quality check and doppler estimation for preamble"""
         success,doppler = True,0
         if len(iq_samples) != 0:
@@ -177,21 +170,25 @@ class PhysicalLayer(object):
             zp   = np.array([z for z in PhysicalLayer.get_preamble()['symb']
                              for _ in range(sps)], dtype=np.complex64)
             ## find starting point
-            cc   = np.correlate(iq_samples, zp[0:3*32*sps])
+            _,_zp = self.get_preamble_z()
+            cc   = np.correlate(iq_samples, _zp) ##zp[0:3*32*sps])
             imax = np.argmax(np.abs(cc[0:2*32*sps]))
-            pks  = cc[(imax, imax+3*32*sps),]
-            tpks = cc[imax+3*16*sps:imax+5*16*sps]
-            print('imax=', imax, 'apks=',np.abs(pks),
-                  np.mean(np.abs(pks)), np.mean(np.abs(tpks)), np.abs(tpks))
-            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(tpks))
-            doppler = np.diff(np.unwrap(np.angle(pks)))[0]/(3*32) if success else 0
+            apks = np.abs(cc[(imax, imax+3*32*sps),])
+            tpks = np.abs(cc[imax+3*16*sps:imax+5*16*sps])
+            print('imax=', imax, 'apks=',apks,
+                  np.mean(apks), np.mean(tpks))
+            success = np.bool(np.mean(apks) > 5*np.mean(tpks) and
+                              apks[0]/apks[1] > 0.5 and
+                              apks[0]/apks[1] < 2.0)
             if success:
                 idx = np.arange(32*sps)
                 pks = [np.correlate(iq_samples[imax+i*32*sps+idx],
-                                    zp[i*32*sps+idx])[0]
+                                    zp[             i*32*sps+idx])[0]
                        for i in range(9)]
-                doppler = freq_est(pks)/32
-            print('success=', success, 'doppler=', doppler)
+                doppler = freq_est(pks)/(32*sps)
+            print('success=', success, 'doppler=', doppler,
+                  np.abs(np.array(pks)),
+                  np.angle(np.array(pks)))
         return success,doppler
 
     def decode_preamble(self, symbols):
@@ -209,6 +206,9 @@ class PhysicalLayer(object):
         self._num_frames_per_block = self._block_len/self._frame_len;
         return True
 
+    def set_mode(self, _):
+        pass
+
     @staticmethod
     def get_preamble():
         """preamble symbols + scrambler"""
@@ -217,12 +217,11 @@ class PhysicalLayer(object):
                         dtype=[('symb',     np.complex64),
                                ('scramble', np.complex64)])
 
-    @staticmethod
-    def get_preamble_z(sps):
+    def get_preamble_z(self):
         """preamble symbols for preamble correlation"""
         a = PhysicalLayer.get_preamble()
-        return np.array([z for z in a['symb'][0:32*3]
-                         for _ in range(sps)])
+        return 0,np.array([z for z in a['symb'][0:3*32]
+                           for _ in range(self._sps)])
 
 if __name__ == '__main__':
     def gen_data_scramble():
@@ -238,20 +237,23 @@ if __name__ == '__main__':
             a[i] = s&7;
         return a
 
-    p=PhysicalLayer(5)
-    z1=np.array([x for x in PRE_SYMBOLS  for _ in range(5)])
-    z2=np.array([x for x in PRE_SCRAMBLE for _ in range(5)])
-    z=z1*z2
-
+    sps = 5;
+    p=PhysicalLayer(sps)
+    z1=np.array([x for x in PRE_SYMBOLS  for _ in range(sps)])
+    z2=np.array([x for x in PRE_SCRAMBLE for _ in range(sps)])
+    z=z1*z2;
+    _,_z=p.get_preamble_z()
+    print(all(z[0:3*32*sps]==_z[0:3*32*sps]))
     for i in range(3):
-        print(i, all(z[32*5*i:32*5*(i+1)] == z[32*5*(3+i):32*5*(3+i+1)]))
+        print(i, all(z[32*sps*i:32*sps*(i+1)] == z[32*sps*(3+i):32*sps*(3+i+1)]))
 
-    print(np.sum(np.sum(z[0:32*5] * np.conj(z[32*5*3:32*5*4]))))
-    print(WALSH[1][:])
-    print(sum(WALSH[1][:]*(1<<np.array(range(7,-1,-1)))))
-    print(FROM_WALSH)
-    print(gen_data_scramble())
+    #print(np.sum(np.sum(z[0:32*5] * np.conj(z[32*5*3:32*5*4]))))
+    #print(WALSH[1][:])
+    #print(sum(WALSH[1][:]*(1<<np.array(range(7,-1,-1)))))
+    #print(FROM_WALSH)
+    #print(gen_data_scramble())
 
     s=ScrambleData()
-    print([s.next() for _ in range(160)])
-    print([s.next() for _ in range(160)])
+    #print([s.next() for _ in range(160)])
+    #print([s.next() for _ in range(160)])
+    #print(np.round(np.angle(PRE_SYMBOLS*PRE_SCRAMBLE)/np.pi*4))

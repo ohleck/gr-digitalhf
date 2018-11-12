@@ -32,7 +32,8 @@ endif()
 GR_PYTHON_INSTALL(
     FILES
     __init__.py
-    DESTINATION ${GR_PYTHON_DIR}/digitalhf
+    physical_layer_driver.py
+    msg_proxy.py DESTINATION ${GR_PYTHON_DIR}/digitalhf
 )
 
 ########################################################################
@@ -45,3 +46,6 @@ set(GR_TEST_PYTHON_DIRS ${CMAKE_BINARY_DIR}/swig)
 GR_ADD_TEST(qa_adaptive_dfe ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa_adaptive_dfe.py)
 
 add_subdirectory(physical_layer)
+GR_ADD_TEST(qa_physical_layer_driver_driver ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa_physical_layer_driver_driver.py)
+GR_ADD_TEST(qa_doppler_correction_cc ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa_doppler_correction_cc.py)
+GR_ADD_TEST(qa_msg_proxy ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa_msg_proxy.py)

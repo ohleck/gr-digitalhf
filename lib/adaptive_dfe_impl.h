@@ -21,18 +21,42 @@
 #ifndef INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 #define INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 
-#include <boost/python.hpp>
-#include <boost/python/numpy.hpp>
 #include <gnuradio/digital/constellation.h>
 #include <digitalhf/adaptive_dfe.h>
 
 namespace gr {
 namespace digitalhf {
 
+class constellation_distance_filter {
+public:
+  constellation_distance_filter(int max_time_constant=10)
+    : _max_time_constant(max_time_constant)
+    , _counter(0)
+    , _pwr(0) {}
+
+  void reset(int max_time_constant) {
+    _max_time_constant = max_time_constant;
+    _counter = 0;
+    _pwr = 0;
+  }
+  float filter(float x) {
+    _counter += (_counter < _max_time_constant);
+    float const alpha = 1.0f/_counter;
+    _pwr = (1-alpha)*_pwr + alpha*x;
+    return _pwr;
+  }
+protected:
+private:
+  int   _max_time_constant;
+  int   _counter;
+  float _pwr; // filtered distance to constellation point
+} ;
+
 class adaptive_dfe_impl : public adaptive_dfe {
 private:
   int _sps;
   int _nB, _nF, _nW;
+  int _nGuard;
 
   float _mu;
   float _alpha;
@@ -40,64 +64,45 @@ private:
   bool _use_symbol_taps;
 
   // module name w.r.t. digitalhf.physical_layer containing a PhysicalLayer class
-  std::string           _py_module_name;
-  boost::python::object _physicalLayer; // class instance of physical layer description
+  // std::string           _py_module_name;
+  // boost::python::object _physicalLayer; // class instance of physical layer description
 
   gr_complex* _taps_samples;
   gr_complex* _taps_symbols;
 
-  gr_complex* _hist_samples;
   gr_complex* _hist_symbols;
-
-  int _hist_sample_index;
   int _hist_symbol_index;
 
-  int _ignore_filter_updates;
-  std::vector<gr_complex> _saved_samples;
-
-  uint64_t _sample_counter;
-
   std::vector<gr::digital::constellation_sptr> _constellations;
-  std::vector<float> _npwr;
-  std::vector<int>   _npwr_counter;
+  std::vector<constellation_distance_filter> _npwr;
   int _npwr_max_time_constant;
   int _constellation_index;
-  std::vector<gr_complex> _samples;
   std::vector<gr_complex> _symbols;
   std::vector<gr_complex> _scramble;
   std::vector<gr_complex> _descrambled_symbols;
   int _symbol_counter;
 
-  bool _need_samples;
   bool _save_soft_decisions;
   std::vector<float> _vec_soft_decisions;
-  pmt::pmt_t         _msg_port_name;
-  pmt::pmt_t         _msg_metadata;
-
-  // PLL for doppler tracking
-  float _df;     // frequency offset in radians per sample
-  float _phase;  // accumulated phase for frequency correction
-  const float _b[2];
-  float _ud;
+  std::map<std::string, pmt::pmt_t> _msg_ports;
+  pmt::pmt_t _msg_metadata;
 
   enum state {
     WAIT_FOR_PREAMBLE,
-    INITIAL_DOPPLER_ESTIMATE,
-    INITIAL_DOPPLER_ESTIMATE_CONTINUE,
+    WAIT_FOR_FRAME_INFO,
     DO_FILTER
   } _state;
 
-  void update_constellations(boost::python::object obj);
-  bool update_frame_information(boost::python::object obj);
-  bool update_doppler_information(boost::python::object obj);
+//  void update_constellations(boost::python::object obj);
+  void update_constellations(pmt::pmt_t );
+  void update_frame_info(pmt::pmt_t );
 
-  void update_local_oscillator();
-  gr_complex filter();
-  void recenter_filter_taps();
+  gr_complex filter(gr_complex const* start, gr_complex const* end);
+  int recenter_filter_taps();
+  void reset_filter();
 
-  void insert_sample(gr_complex z);
-  void update_pll(float doppler);
-  bool get_correlation_tag(uint64_t i, uint64_t& offset, float& phase_est);
+  void publish_frame_info();
+  void publish_soft_dec();
 
 public:
   adaptive_dfe_impl(int sps, // samples per symbol
@@ -105,8 +110,7 @@ public:
                     int nF,  // number of backward FIR taps
                     int nW,  // number of symbol taps
                     float mu,
-                    float alpha,
-                    std::string physical_layer_description);
+                    float alpha);
   virtual ~adaptive_dfe_impl();
 
   void forecast (int noutput_items, gr_vector_int &ninput_items_required);
@@ -120,8 +124,7 @@ public:
                            gr_vector_void_star &output_items);
 
   virtual void set_mu(float mu) { _mu = mu; }
-  virtual void set_mode(std::string);
-
+  virtual void set_alpha(float alpha) { _alpha = alpha; }
 } ;
 
 } // namespace digitalhf

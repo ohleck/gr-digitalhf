@@ -94,33 +94,6 @@
     </param>
   </block>
   <block>
-    <key>variable</key>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(757, 16)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>dummy</value>
-    </param>
-    <param>
-      <key>value</key>
-      <value>[lpz[0].extend(x) for x in lpz[1:]]</value>
-    </param>
-  </block>
-  <block>
     <key>variable_qtgui_range</key>
     <param>
       <key>comment</key>
@@ -136,7 +109,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1141, 80)</value>
+      <value>(1141, 16)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -184,33 +157,6 @@
     </param>
   </block>
   <block>
-    <key>variable</key>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(320, 16)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>lpz</value>
-    </param>
-    <param>
-      <key>value</key>
-      <value>[[x,x,x,x,x] for x in STANAG_4285.PhysicalLayer.get_preamble()['symb'][9:40].tolist()]</value>
-    </param>
-  </block>
-  <block>
     <key>variable_qtgui_chooser</key>
     <param>
       <key>comment</key>
@@ -226,7 +172,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1152, 490)</value>
+      <value>(1152, 277)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -325,7 +271,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1024, 80)</value>
+      <value>(1152, 144)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -384,7 +330,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(533, 16)</value>
+      <value>(394, 16)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -411,7 +357,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(608, 16)</value>
+      <value>(469, 16)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -438,7 +384,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(682, 16)</value>
+      <value>(544, 16)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -451,49 +397,6 @@
     <param>
       <key>value</key>
       <value>4</value>
-    </param>
-  </block>
-  <block>
-    <key>variable_rrc_filter_taps</key>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>alpha</key>
-      <value>0.25</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(469, 352)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>gain</key>
-      <value>1.0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>rrc_taps</value>
-    </param>
-    <param>
-      <key>ntaps</key>
-      <value>11*sps</value>
-    </param>
-    <param>
-      <key>samp_rate</key>
-      <value>samp_rate</value>
-    </param>
-    <param>
-      <key>sym_rate</key>
-      <value>samp_rate/sps</value>
     </param>
   </block>
   <block>
@@ -535,7 +438,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(458, 16)</value>
+      <value>(320, 16)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -548,6 +451,69 @@
     <param>
       <key>value</key>
       <value>5</value>
+    </param>
+  </block>
+  <block>
+    <key>analog_agc2_xx</key>
+    <param>
+      <key>attack_rate</key>
+      <value>1e-1</value>
+    </param>
+    <param>
+      <key>alias</key>
+      <value></value>
+    </param>
+    <param>
+      <key>comment</key>
+      <value></value>
+    </param>
+    <param>
+      <key>affinity</key>
+      <value></value>
+    </param>
+    <param>
+      <key>decay_rate</key>
+      <value>1e-2</value>
+    </param>
+    <param>
+      <key>_enabled</key>
+      <value>1</value>
+    </param>
+    <param>
+      <key>_coordinate</key>
+      <value>(480, 154)</value>
+    </param>
+    <param>
+      <key>_rotation</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>gain</key>
+      <value>5</value>
+    </param>
+    <param>
+      <key>id</key>
+      <value>analog_agc2_xx_0</value>
+    </param>
+    <param>
+      <key>max_gain</key>
+      <value>8</value>
+    </param>
+    <param>
+      <key>maxoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>minoutbuf</key>
+      <value>0</value>
+    </param>
+    <param>
+      <key>reference</key>
+      <value>1.0</value>
+    </param>
+    <param>
+      <key>type</key>
+      <value>complex</value>
     </param>
   </block>
   <block>
@@ -570,11 +536,11 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(928, 314)</value>
+      <value>(533, 368)</value>
     </param>
     <param>
       <key>_rotation</key>
-      <value>0</value>
+      <value>180</value>
     </param>
     <param>
       <key>id</key>
@@ -613,7 +579,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(256, 154)</value>
+      <value>(277, 154)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -622,57 +588,6 @@
     <param>
       <key>id</key>
       <value>blocks_float_to_complex_0</value>
-    </param>
-    <param>
-      <key>maxoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>minoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>vlen</key>
-      <value>1</value>
-    </param>
-  </block>
-  <block>
-    <key>blocks_multiply_const_vxx</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>const</key>
-      <value>5</value>
-    </param>
-    <param>
-      <key>affinity</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(426, 176)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>blocks_multiply_const_vxx_0</value>
-    </param>
-    <param>
-      <key>type</key>
-      <value>complex</value>
     </param>
     <param>
       <key>maxoutbuf</key>
@@ -711,7 +626,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(917, 133)</value>
+      <value>(1184, 464)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -762,7 +677,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(586, 176)</value>
+      <value>(682, 176)</value>
     </param>
     <param>
       <key>_rotation</key>
@@ -817,7 +732,7 @@
     </param>
     <param>
       <key>file</key>
-      <value>/Users/chm/Downloads/kiwi-sm2gct.mooo.com_2018-10-30T10_35_39Z_8700.00_iq.wav</value>
+      <value>/Users/chm/Software/signal-analysis/gnuradio/20181027T095433Z_6407800_SM2GCT_iq.wav</value>
     </param>
     <param>
       <key>_coordinate</key>
@@ -845,11 +760,11 @@
     </param>
     <param>
       <key>repeat</key>
-      <value>False</value>
+      <value>True</value>
     </param>
   </block>
   <block>
-    <key>digitalhf_adaptive_dfe</key>
+    <key>digitalhf_physical_layer_driver</key>
     <param>
       <key>alias</key>
       <value></value>
@@ -863,20 +778,24 @@
       <value></value>
     </param>
     <param>
+      <key>description_name</key>
+      <value>STANAG_4285</value>
+    </param>
+    <param>
       <key>_enabled</key>
       <value>True</value>
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(874, 389)</value>
+      <value>(736, 314)</value>
     </param>
     <param>
       <key>_rotation</key>
-      <value>0</value>
+      <value>180</value>
     </param>
     <param>
       <key>id</key>
-      <value>digitalhf_adaptive_dfe_0</value>
+      <value>digitalhf_physical_layer_driver_0</value>
     </param>
     <param>
       <key>maxoutbuf</key>
@@ -915,235 +834,8 @@
       <value>nW</value>
     </param>
     <param>
-      <key>py_obj_name</key>
-      <value>STANAG_4285</value>
-    </param>
-  </block>
-  <block>
-    <key>fir_filter_xxx</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>affinity</key>
-      <value></value>
-    </param>
-    <param>
-      <key>decim</key>
-      <value>1</value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(330, 293)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>fir_filter_xxx_0</value>
-    </param>
-    <param>
-      <key>maxoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>minoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>samp_delay</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>taps</key>
-      <value>rrc_taps</value>
-    </param>
-    <param>
-      <key>type</key>
-      <value>ccc</value>
-    </param>
-  </block>
-  <block>
-    <key>fractional_resampler_xx</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>affinity</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>1</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(96, 293)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>fractional_resampler_xx_0</value>
-    </param>
-    <param>
-      <key>maxoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>minoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>phase_shift</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>resamp_ratio</key>
-      <value>12001./11999.*0+1</value>
-    </param>
-    <param>
-      <key>type</key>
-      <value>complex</value>
-    </param>
-  </block>
-  <block>
-    <key>import</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(1034, 21)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>import_0</value>
-    </param>
-    <param>
-      <key>import</key>
-      <value>import digitalhf.physical_layer.STANAG_4285 as STANAG_4285</value>
-    </param>
-  </block>
-  <block>
-    <key>import</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(960, 21)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>import_0_0</value>
-    </param>
-    <param>
-      <key>import</key>
-      <value>from gnuradio import gr</value>
-    </param>
-  </block>
-  <block>
-    <key>digital_corr_est_cc</key>
-    <param>
-      <key>alias</key>
-      <value></value>
-    </param>
-    <param>
-      <key>comment</key>
-      <value></value>
-    </param>
-    <param>
-      <key>affinity</key>
-      <value></value>
-    </param>
-    <param>
-      <key>_enabled</key>
-      <value>True</value>
-    </param>
-    <param>
-      <key>_coordinate</key>
-      <value>(640, 272)</value>
-    </param>
-    <param>
-      <key>_rotation</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>id</key>
-      <value>preamble</value>
-    </param>
-    <param>
-      <key>maxoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>minoutbuf</key>
-      <value>0</value>
-    </param>
-    <param>
-      <key>sps</key>
-      <value>sps</value>
-    </param>
-    <param>
-      <key>symbols</key>
-      <value>lpz[0]</value>
-    </param>
-    <param>
-      <key>mark_delay</key>
-      <value>(nF-9)*sps+2</value>
-    </param>
-    <param>
-      <key>threshold_method</key>
-      <value>digital.corr_est_cc.THRESHOLD_DYNAMIC</value>
-    </param>
-    <param>
-      <key>threshold</key>
-      <value>0.5</value>
+      <key>samp_rate</key>
+      <value>samp_rate</value>
     </param>
   </block>
   <block>
@@ -1174,7 +866,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1109, 410)</value>
+      <value>(320, 442)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -1182,7 +874,7 @@
     </param>
     <param>
       <key>_rotation</key>
-      <value>0</value>
+      <value>180</value>
     </param>
     <param>
       <key>grid</key>
@@ -1529,7 +1221,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1120, 304)</value>
+      <value>(320, 357)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -1537,7 +1229,7 @@
     </param>
     <param>
       <key>_rotation</key>
-      <value>0</value>
+      <value>180</value>
     </param>
     <param>
       <key>grid</key>
@@ -1801,7 +1493,7 @@
     </param>
     <param>
       <key>size</key>
-      <value>1024/2</value>
+      <value>80*sps</value>
     </param>
     <param>
       <key>srate</key>
@@ -1817,7 +1509,7 @@
     </param>
     <param>
       <key>tr_delay</key>
-      <value>0.01</value>
+      <value>0.007</value>
     </param>
     <param>
       <key>tr_level</key>
@@ -1896,7 +1588,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1002, 602)</value>
+      <value>(320, 293)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -1904,7 +1596,7 @@
     </param>
     <param>
       <key>_rotation</key>
-      <value>0</value>
+      <value>180</value>
     </param>
     <param>
       <key>grid</key>
@@ -2263,7 +1955,7 @@
     </param>
     <param>
       <key>_coordinate</key>
-      <value>(1120, 218)</value>
+      <value>(896, 101)</value>
     </param>
     <param>
       <key>gui_hint</key>
@@ -2451,6 +2143,12 @@
     </param>
   </block>
   <connection>
+    <source_block_id>analog_agc2_xx_0</source_block_id>
+    <sink_block_id>blocks_throttle_0</sink_block_id>
+    <source_key>0</source_key>
+    <sink_key>0</sink_key>
+  </connection>
+  <connection>
     <source_block_id>blocks_complex_to_mag_0</source_block_id>
     <sink_block_id>qtgui_time_sink_x_0</sink_block_id>
     <source_key>0</source_key>
@@ -2458,19 +2156,19 @@
   </connection>
   <connection>
     <source_block_id>blocks_float_to_complex_0</source_block_id>
-    <sink_block_id>blocks_multiply_const_vxx_0</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>blocks_multiply_const_vxx_0</source_block_id>
-    <sink_block_id>fractional_resampler_xx_0</sink_block_id>
+    <sink_block_id>analog_agc2_xx_0</sink_block_id>
     <source_key>0</source_key>
     <sink_key>0</sink_key>
   </connection>
   <connection>
     <source_block_id>blocks_throttle_0</source_block_id>
-    <sink_block_id>fir_filter_xxx_0</sink_block_id>
+    <sink_block_id>digitalhf_physical_layer_driver_0</sink_block_id>
+    <source_key>0</source_key>
+    <sink_key>0</sink_key>
+  </connection>
+  <connection>
+    <source_block_id>blocks_throttle_0</source_block_id>
+    <sink_block_id>qtgui_waterfall_sink_x_0</sink_block_id>
     <source_key>0</source_key>
     <sink_key>0</sink_key>
   </connection>
@@ -2487,51 +2185,21 @@
     <sink_key>1</sink_key>
   </connection>
   <connection>
-    <source_block_id>digitalhf_adaptive_dfe_0</source_block_id>
-    <sink_block_id>qtgui_const_sink_x_0</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>digitalhf_adaptive_dfe_0</source_block_id>
-    <sink_block_id>qtgui_time_sink_x_1</sink_block_id>
-    <source_key>soft_dec</source_key>
-    <sink_key>in</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>fir_filter_xxx_0</source_block_id>
-    <sink_block_id>preamble</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>fractional_resampler_xx_0</source_block_id>
-    <sink_block_id>blocks_throttle_0</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>preamble</source_block_id>
+    <source_block_id>digitalhf_physical_layer_driver_0</source_block_id>
     <sink_block_id>blocks_complex_to_mag_0</sink_block_id>
     <source_key>1</source_key>
     <sink_key>0</sink_key>
   </connection>
   <connection>
-    <source_block_id>preamble</source_block_id>
-    <sink_block_id>blocks_tag_debug_0</sink_block_id>
+    <source_block_id>digitalhf_physical_layer_driver_0</source_block_id>
+    <sink_block_id>qtgui_const_sink_x_0</sink_block_id>
     <source_key>0</source_key>
     <sink_key>0</sink_key>
   </connection>
   <connection>
-    <source_block_id>preamble</source_block_id>
-    <sink_block_id>digitalhf_adaptive_dfe_0</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
-  </connection>
-  <connection>
-    <source_block_id>preamble</source_block_id>
-    <sink_block_id>qtgui_waterfall_sink_x_0</sink_block_id>
-    <source_key>0</source_key>
-    <sink_key>0</sink_key>
+    <source_block_id>digitalhf_physical_layer_driver_0</source_block_id>
+    <sink_block_id>qtgui_time_sink_x_1</sink_block_id>
+    <source_key>soft_dec</source_key>
+    <sink_key>in</sink_key>
   </connection>
 </flow_graph>
