@@ -139,7 +139,7 @@ class PhysicalLayer(object):
             self._frame_counter += 1
             print('test:', symbols[self._mode['unknown']:], np.mean(np.real(symbols[self._mode['unknown']:])))
             if self._frame_counter < self._num_frames_per_block-2:
-                success = np.bool(np.mean(np.real(symbols[self._mode['unknown']:])) > 0.7)
+                success = np.mean(np.real(symbols[self._mode['unknown']:])) > 0.7
             return [self.get_next_data_frame(success),self._mode['ci'],success,success]
 
     def get_next_data_frame(self, success):
@@ -177,9 +177,7 @@ class PhysicalLayer(object):
             tpks = np.abs(cc[imax+3*16*sps:imax+5*16*sps])
             print('imax=', imax, 'apks=',apks,
                   np.mean(apks), np.mean(tpks))
-            success = np.bool(np.mean(apks) > 5*np.mean(tpks) and
-                              apks[0]/apks[1] > 0.5 and
-                              apks[0]/apks[1] < 2.0)
+            success = np.mean(apks) > 5*np.mean(tpks) and apks[0]/apks[1] > 0.5 and apks[0]/apks[1] < 2.0
             if success:
                 idx = np.arange(32*sps)
                 pks = [np.correlate(iq_samples[imax+i*32*sps+idx],

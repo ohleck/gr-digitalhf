@@ -46,7 +46,7 @@ class PhysicalLayer(object):
             idx = range(30,80)
             z = symbols[idx]*np.conj(self._preamble['symb'][idx])
             ## print('quality_preamble',np.sum(np.real(z)<0), symbols[idx])
-            success = np.bool(np.sum(np.real(z)<0) < 30)
+            success = np.sum(np.real(z)<0) < 30
             frame_description = [self._data,self._mode,success,True]
 
         self._frame_counter += 1
@@ -69,7 +69,7 @@ class PhysicalLayer(object):
         pks  = cc[(imax,imax+31*sps),]
         tpks = cc[imax+15*sps:imax+16*sps]
         ## print('doppler: ', np.abs(pks), np.abs(tpks))
-        success = np.bool(np.mean(np.abs(pks)) > 5*np.mean(np.abs(tpks)))
+        success = np.mean(np.abs(pks)) > 5*np.mean(np.abs(tpks))
         doppler = np.diff(np.unwrap(np.angle(pks)))[0]/31/self._sps if success else 0
         return success,doppler
 

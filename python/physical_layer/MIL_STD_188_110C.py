@@ -183,7 +183,7 @@ class PhysicalLayer(object):
             pks  = [np.correlate(iq_samples[imax+i*23*sps+idx],
                                  zp[i*23*sps+idx])[0]
                     for i in range(8)]
-            success = np.bool(np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
+            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)]))
             print('test:',imax, np.mean(np.abs(pks)), np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
             if success:
                 print('doppler apks', np.abs(pks))
@@ -198,10 +198,10 @@ class PhysicalLayer(object):
         pass
 
     def get_preamble_quality(self, symbols):
-        return np.bool(np.abs(np.mean(symbols[-40:])) > 0.5)
+        return np.abs(np.mean(symbols[-40:])) > 0.5
 
     def get_data_frame_quality(self, symbols):
-        return np.bool(np.abs(np.mean(symbols[-31:])) > 0.5)
+        return np.abs(np.mean(symbols[-31:])) > 0.5
 
     def decode_reinserted_preamble(self, symbols):
         ## decode D0,D1,D2
