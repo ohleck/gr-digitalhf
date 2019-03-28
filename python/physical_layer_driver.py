@@ -54,7 +54,11 @@ class physical_layer_driver(gr.hier_block2):
         preamble_offset,preamble_samples = self._physical_layer_driver_description.get_preamble_z()
         preamble_length          = sps*len(self._physical_layer_driver_description.get_preamble())
         self._rrc_filter         = filter.fir_filter_ccc(1, (self._rrc_taps))
-        self._corr_est           = digital.corr_est_cc((preamble_samples.tolist()), sps, preamble_offset, 0.5)
+        self._corr_est           = digital.corr_est_cc(symbols    = (preamble_samples.tolist()),
+                                                       sps        = sps,
+                                                       mark_delay = preamble_offset,
+                                                       threshold  = 0.5,
+                                                       threshold_method = 1)
         self._doppler_correction = digitalhf.doppler_correction_cc(preamble_length, len(preamble_samples))
         self._adaptive_filter    = digitalhf.adaptive_dfe(sps, nB, nF, nW, mu, alpha)
         self._msg_proxy          = digitalhf.msg_proxy(self._physical_layer_driver_description)
@@ -80,6 +84,7 @@ class physical_layer_driver(gr.hier_block2):
 
         self.message_port_register_hier_out('soft_dec')
         self.msg_connect((self._adaptive_filter, 'soft_dec'), (self, 'soft_dec'))
+        self.msg_connect((self._msg_proxy, 'soft_dec'), (self, 'soft_dec'))
 
     def set_mu(self, mu):
         self._adaptive_filter.set_mu(mu)

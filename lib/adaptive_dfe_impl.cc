@@ -84,8 +84,8 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
   , _symbol_counter(0)
   , _save_soft_decisions(false)
   , _vec_soft_decisions()
-  , _msg_ports{{"soft_dec",   pmt::mp("soft_dec")},
-               {"frame_info", pmt::mp("frame_info")}}
+  , _msg_ports{{"soft_dec",   pmt::intern("soft_dec")},
+               {"frame_info", pmt::intern("frame_info")}}
   , _msg_metadata(pmt::make_dict())
   , _state(WAIT_FOR_PREAMBLE)
 {
@@ -96,7 +96,7 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
 
   message_port_register_out(_msg_ports["soft_dec"]);
 
-  pmt::pmt_t constellations_port = pmt::mp("constellations");
+  pmt::pmt_t constellations_port = pmt::intern("constellations");
   message_port_register_in(constellations_port);
   set_msg_handler(constellations_port, boost::bind(&adaptive_dfe_impl::update_constellations, this, _1));
 
@@ -128,6 +128,7 @@ adaptive_dfe_impl::general_work(int noutput_items,
                                 gr_vector_void_star &output_items)
 {
   gr::thread::scoped_lock lock(d_setlock);
+  //GR_LOG_DEBUG(d_logger, str(boost::format("work: %d") % noutput_items));
   gr_complex const* in = (gr_complex const *)input_items[0];
   gr_complex *out = (gr_complex *)output_items[0];
 
@@ -142,7 +143,7 @@ adaptive_dfe_impl::general_work(int noutput_items,
   switch (_state) {
     case WAIT_FOR_PREAMBLE: {
       std::vector<tag_t> v;
-      get_tags_in_window(v, 0, history()-1, ninput, pmt::mp("preamble_start"));
+      get_tags_in_window(v, 0, history()-1, ninput, pmt::intern("preamble_start"));
       if (v.empty()) {
         consume(0, ninput - history()+1);
       } else {
@@ -164,9 +165,10 @@ adaptive_dfe_impl::general_work(int noutput_items,
       break;
     } // WAIT_FOR_PREAMBLE
     case WAIT_FOR_FRAME_INFO: {
+      //GR_LOG_DEBUG(d_logger, "WAIT_FOR_FRAME_INFO");
       //update_frame_info(delete_head_blocking(_msg_ports["frame_info"]));
       break;
-    } // WAIT_FOR_MESSAGE
+    } // WAIT_FOR_FRAME_INFO
     case DO_FILTER: {
       // std::cout << "========= offset (DO_FILTER) nitems_read(0)= " << nitems_read(0) << " ==========" << std::endl;
       int ninput_processed = 0;
@@ -315,7 +317,10 @@ void adaptive_dfe_impl::publish_frame_info()
 {
   pmt::pmt_t data = pmt::make_dict();
   GR_LOG_DEBUG(d_logger, str(boost::format("publish_frame_info %d == %d") % _descrambled_symbols.size() % _symbols.size()));
-  data = pmt::dict_add(data, pmt::mp("symbols"), pmt::init_c32vector(_descrambled_symbols.size(), &_descrambled_symbols.front()));
+  data = pmt::dict_add(data, pmt::intern("symbols"), pmt::init_c32vector(_descrambled_symbols.size(), &_descrambled_symbols.front()));
+  // for (int i=0; i<_vec_soft_decisions.size(); ++i)
+  //   _vec_soft_decisions[i] = std::max(-1.0f, std::min(1.0f, _vec_soft_decisions[i]));
+  data = pmt::dict_add(data, pmt::intern("soft_dec"), pmt::init_f32vector(_vec_soft_decisions.size(), &_vec_soft_decisions.front()));
   message_port_pub(_msg_ports["frame_info"], data);
   _descrambled_symbols.clear();
 }
@@ -325,7 +330,7 @@ void adaptive_dfe_impl::publish_soft_dec()
   if (_vec_soft_decisions.empty())
     return;
   message_port_pub(_msg_ports["soft_dec"],
-                   pmt::cons(pmt::dict_add(_msg_metadata, pmt::mp("packet_len"), pmt::mp(_vec_soft_decisions.size())),
+                   pmt::cons(pmt::dict_add(_msg_metadata, pmt::intern("packet_len"), pmt::mp(_vec_soft_decisions.size())),
                              pmt::init_f32vector(_vec_soft_decisions.size(), _vec_soft_decisions)));
   _vec_soft_decisions.clear();
 }
@@ -341,11 +346,11 @@ void adaptive_dfe_impl::update_constellations(pmt::pmt_t data) {
 
   for (int i=0; i<n; ++i) {
     pmt::pmt_t c = pmt::vector_ref(data, i);
-    int const idx = pmt::to_long(pmt::dict_ref(c, pmt::mp("idx"), pmt::from_long(-1)));
+    int const idx = pmt::to_long(pmt::dict_ref(c, pmt::intern("idx"), pmt::from_long(-1)));
     assert(idx>=0 && idx < n);
     _constellations[idx] = gr::digital::constellation_calcdist::make
-      (pmt::c32vector_elements(pmt::dict_ref(c, pmt::mp("points"),  pmt::PMT_NIL)),
-       pmt::s32vector_elements(pmt::dict_ref(c, pmt::mp("symbols"), pmt::PMT_NIL)),
+      (pmt::c32vector_elements(pmt::dict_ref(c, pmt::intern("points"),  pmt::PMT_NIL)),
+       pmt::s32vector_elements(pmt::dict_ref(c, pmt::intern("symbols"), pmt::PMT_NIL)),
        rotational_symmetry, dimensionality);
     _npwr[i].reset(_npwr_max_time_constant);
   }
@@ -354,11 +359,11 @@ void adaptive_dfe_impl::update_constellations(pmt::pmt_t data) {
 void adaptive_dfe_impl::update_frame_info(pmt::pmt_t data)
 {
   //GR_LOG_DEBUG(d_logger,str(boost::format("adaptive_dfe_impl::update_frame_info() %s") % data));
-  _symbols    = pmt::c32vector_elements(pmt::dict_ref(data, pmt::mp("symb"),     pmt::PMT_NIL));
-  _scramble   = pmt::c32vector_elements(pmt::dict_ref(data, pmt::mp("scramble"), pmt::PMT_NIL));
-  _constellation_index   = pmt::to_long(pmt::dict_ref(data, pmt::mp("constellation_idx"), pmt::PMT_NIL));
-  _save_soft_decisions   = pmt::to_bool(pmt::dict_ref(data, pmt::mp("save_soft_dec"),     pmt::PMT_F));
-  bool const do_continue = pmt::to_bool(pmt::dict_ref(data, pmt::mp("do_continue"),       pmt::PMT_F));
+  _symbols    = pmt::c32vector_elements(pmt::dict_ref(data, pmt::intern("symb"),     pmt::PMT_NIL));
+  _scramble   = pmt::c32vector_elements(pmt::dict_ref(data, pmt::intern("scramble"), pmt::PMT_NIL));
+  _constellation_index   = pmt::to_long(pmt::dict_ref(data, pmt::intern("constellation_idx"), pmt::PMT_NIL));
+  _save_soft_decisions   = pmt::to_bool(pmt::dict_ref(data, pmt::intern("save_soft_dec"),     pmt::PMT_F));
+  bool const do_continue = pmt::to_bool(pmt::dict_ref(data, pmt::intern("do_continue"),       pmt::PMT_F));
   assert(_symbols.size() == _scramble.size());
   _descrambled_symbols.resize(_symbols.size());
   _vec_soft_decisions.clear();

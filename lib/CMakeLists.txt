@@ -36,7 +36,7 @@ if(NOT digitalhf_sources)
 endif(NOT digitalhf_sources)
 
 add_library(gnuradio-digitalhf SHARED ${digitalhf_sources})
-target_link_libraries(gnuradio-digitalhf ${Boost_LIBRARIES} ${GNURADIO_ALL_LIBRARIES} ${PYTHON_LIBRARIES})
+target_link_libraries(gnuradio-digitalhf ${Boost_LIBRARIES} ${GNURADIO_ALL_LIBRARIES} ${LOG4CPP_LIBRARIES})
 set_target_properties(gnuradio-digitalhf PROPERTIES DEFINE_SYMBOL "gnuradio_digitalhf_EXPORTS")
 
 if(APPLE)
@@ -71,6 +71,7 @@ target_link_libraries(
   ${GNURADIO_RUNTIME_LIBRARIES}
   ${Boost_LIBRARIES}
   ${CPPUNIT_LIBRARIES}
+  ${LOG4CPP_LIBRARIES}
   gnuradio-digitalhf
 )
 GR_ADD_TEST(test_digitalhf test-digitalhf)

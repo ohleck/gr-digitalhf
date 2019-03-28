@@ -44,6 +44,9 @@ class msg_proxy(gr.basic_block):
         self.message_port_register_out(self._port_frame_info)
         self.set_msg_handler(self._port_frame_info, self.msg_handler_frame)
 
+        self._port_soft_dec = pmt.intern("soft_dec")
+        self.message_port_register_out(self._port_soft_dec)
+
     def msg_handler_doppler(self, msg_in):
         ## print('-------------------- msg_handler_doppler --------------------')
         iq_samples = pmt.to_python(pmt.cdr(msg_in))
@@ -57,8 +60,19 @@ class msg_proxy(gr.basic_block):
     def msg_handler_frame(self, msg_in):
         ## print('-------------------- msg_handler_frame --------------------')
         ## print(msg_in)
-        symbols = pmt.to_python(pmt.dict_ref(msg_in, pmt.intern('symbols'), pmt.PMT_NIL))
+        symbols  = pmt.to_python(pmt.dict_ref(msg_in, pmt.intern('symbols'), pmt.PMT_NIL))
+        soft_dec = pmt.to_python(pmt.dict_ref(msg_in, pmt.intern('soft_dec'), pmt.PMT_NIL))
         symb,constellation_idx,do_continue,save_soft_dec = self._obj.get_next_frame(symbols)
+        if do_continue and len(soft_dec) != 0:
+            d = self._obj.decode_soft_dec(soft_dec)
+            msg_out = pmt.make_dict()
+            msg_out = pmt.dict_add(msg_out, pmt.intern('packet_len'), pmt.to_pmt(len(d)))
+            d = np.array(d, dtype=np.float32)
+            d[abs(d)==np.Inf] = 0
+            vv = pmt.to_pmt(d)
+            msg = pmt.cons(msg_out, vv)
+            self.message_port_pub(self._port_soft_dec, msg)
+            ## TODO: publish the bits if success
         ##print('symb=', symb, symb['symb'], symb['scramble'])
         msg_out = pmt.make_dict()
         msg_out = pmt.dict_add(msg_out, pmt.intern('symb'), pmt.to_pmt(symb['symb']))

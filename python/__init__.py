@@ -31,6 +31,6 @@ except ImportError:
 	pass
 
 # import any pure python here
-from physical_layer_driver import physical_layer_driver
-from msg_proxy import msg_proxy
+from .physical_layer_driver import physical_layer_driver
+from .msg_proxy import msg_proxy
 #

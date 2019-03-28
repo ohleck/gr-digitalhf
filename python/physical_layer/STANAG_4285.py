@@ -2,6 +2,22 @@
 
 import numpy as np
 
+class Deinterleaver(object):
+    "S4285 deinterleaver"
+    def __init__(self, incr):
+        ## incr = 12 -> L
+        ## incr =  1 -> S
+        self._buf = [np.zeros(incr*(31-i) + 1) for i in range(32)]
+
+    def push(self, a):
+        assert(len(a) == 32)
+        for i in range(32):
+            self._buf[i][0] = a[i]
+            self._buf[i] = np.roll(self._buf[i],1)
+
+    def fetch(self):
+        return np.array([self._buf[(9*i)%32][0] for i in range(32)])
+
 class PhysicalLayer(object):
     """Physical layer description for STANAG 4285"""
 
@@ -20,6 +36,7 @@ class PhysicalLayer(object):
                                 self.make_psk(8, [1,0,2,3,6,7,5,4])]
         self._preamble = self.get_preamble()
         self._data     = self.get_data()
+        self._deinterleaver = Deinterleaver(12) ## for now BPSK L fixed
 
     def set_mode(self, mode):
         """set phase modultation type"""
@@ -87,6 +104,15 @@ class PhysicalLayer(object):
         """preamble symbols for preamble correlation"""
         a = PhysicalLayer.get_preamble()
         return 2,np.array([z for z in a['symb'][0:31] for _ in range(self._sps)])
+
+    def decode_soft_dec(self, soft_dec):
+        assert(len(soft_dec) == 128)
+        print('decode_soft_dec: ', len(soft_dec))
+        res = []
+        for i in range(0,128,32):
+            self._deinterleaver.push(soft_dec[i:i+32])
+            res.extend(self._deinterleaver.fetch().tolist())
+        return res
 
     @staticmethod
     def get_preamble():

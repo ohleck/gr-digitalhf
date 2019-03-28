@@ -156,14 +156,14 @@ class PhysicalLayer(object):
             self._frame_counter += 1
             return [self._preamble,MODE_BPSK,success,False]
 
-        frame_counter_mod = self._frame_counter%72
-        if frame_counter_mod == 0: ## --- re-inserted preamble
+        frame_counter_mod72 = self._frame_counter%72
+        if frame_counter_mod72 == 0: ## --- re-inserted preamble
             self._frame_counter += 1
             success = self.get_preamble_quality(symbols)
             return [self.make_reinserted_preamble(self._preamble_offset,success),MODE_QPSK,success,False]
 
-        if frame_counter_mod >= 1: ## ---- data frames
-            got_reinserted_preamble = frame_counter_mod == 1
+        if frame_counter_mod72 >= 1: ## ---- data frames
+            got_reinserted_preamble = frame_counter_mod72 == 1
             self._frame_counter += 1
             if got_reinserted_preamble:
                 success = self.decode_reinserted_preamble(symbols)
@@ -176,21 +176,29 @@ class PhysicalLayer(object):
         success,doppler = True,0
         if len(iq_samples) != 0:
             sps  = self._sps
-            idx  = np.arange(23*sps)
+            m    = 23*sps
+            idx  = np.arange(m)
+            idx2  = np.arange(m+23*sps)
             _,zp = self.get_preamble_z()
-            cc   = np.correlate(iq_samples, zp[idx])
+            n    = len(zp)
+            cc   = np.correlate(iq_samples, zp)
             imax = np.argmax(np.abs(cc[0:23*sps]))
-            pks  = [np.correlate(iq_samples[imax+i*23*sps+idx],
-                                 zp[i*23*sps+idx])[0]
-                    for i in range(8)]
-            success = np.mean(np.abs(pks)) > 2*np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)]))
-            print('test:',imax, np.mean(np.abs(pks)), np.mean(np.abs(cc[imax+11*sps+range(-sps,sps)])))
+            print('imax=', imax, len(iq_samples))
+            pks  = [np.correlate(iq_samples[imax+i*m+idx],
+                                 zp[i*m+idx])[0]
+                    for i in range(n//m)]
+            val  = [np.mean(np.abs(np.correlate(iq_samples[imax+i*m+idx2],
+                                                zp[i*m+idx])[11*sps+np.arange(-2*sps,2*sps)]))
+                    for i in range((n//m)-1)]
+            tests = np.abs(pks[0:-1])/val
+            success = np.median(tests) > 2.0
+            print('test:', np.abs(pks), tests)
             if success:
                 print('doppler apks', np.abs(pks))
                 print('doppler ppks', np.angle(pks),
-                      np.diff(np.unwrap(np.angle(pks)))/23,
-                      np.mean(np.diff(np.unwrap(np.angle(pks)))/23))
-                doppler = freq_est(pks)/(23*sps);
+                      np.diff(np.unwrap(np.angle(pks)))/m,
+                      np.mean(np.diff(np.unwrap(np.angle(pks)))/m))
+                doppler = freq_est(pks)/m;
             print('success=', success, 'doppler=', doppler)
         return success,doppler
 
@@ -238,13 +246,13 @@ class PhysicalLayer(object):
                           ('scramble', np.complex64)])
         a['symb'][-72:-72+3*13] = 0 ## D0,D1,D2
         if not success:
-            sefl._frame_counter = -1
+            self._frame_counter = -1
         return a
 
     def make_data_frame(self, success):
         self._preamble_offset = -72 ## all following reinserted preambles start at index -72
-        a=np.zeros(256+31, dtype=[('symb',     np.complex64),
-                                  ('scramble', np.complex64)])
+        a = np.zeros(256+31, dtype=[('symb',     np.complex64),
+                                    ('scramble', np.complex64)])
         a['scramble'][:256] = self._data_scramble
         n = (self._frame_counter-2)%72
         m = n%18
@@ -257,6 +265,9 @@ class PhysicalLayer(object):
         if not success:
             self._frame_counter = -1
         return a
+
+    def decode_soft_dec(self, soft_dec):
+        return soft_dec
 
     @staticmethod
     def get_preamble():

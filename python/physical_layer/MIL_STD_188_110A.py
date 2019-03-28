@@ -2,17 +2,17 @@
 
 from __future__ import print_function
 import numpy as np
-from common import *
+import common
 
 ## ---- Walsh-4 codes -----------------------------------------------------------
-WALSH = np.array([[0,0,0,0, 0,0,0,0],
-                  [0,1,0,1, 0,1,0,1],
-                  [0,0,1,1, 0,0,1,1],
-                  [0,1,1,0, 0,1,1,0],
-                  [0,0,0,0, 1,1,1,1],
-                  [0,1,0,1, 1,0,1,0],
-                  [0,0,1,1, 1,1,0,0],
-                  [0,1,1,0, 1,0,0,1]],
+WALSH = np.array([[0,0,0,0, 0,0,0,0],  # 0 - 000
+                  [0,1,0,1, 0,1,0,1],  # 1 - 001
+                  [0,0,1,1, 0,0,1,1],  # 2 - 010
+                  [0,1,1,0, 0,1,1,0],  # 3 - 011
+                  [0,0,0,0, 1,1,1,1],  # 4 - 100
+                  [0,1,0,1, 1,0,1,0],  # 5 - 010
+                  [0,0,1,1, 1,1,0,0],  # 6 - 011
+                  [0,1,1,0, 1,0,0,1]], # 7 - 111
                  dtype=np.uint8)
 
 FROM_WALSH = -np.ones(256, dtype=np.int8)
@@ -31,12 +31,12 @@ TRIBIT_SCRAMBLE = np.array(
 
 ## ---- preamble symbols ---------------------------------------------------------
 D1=D2=C1=C2=C3=0 ## not known
-PRE_SYMBOLS  = n_psk(2, np.concatenate(
+PRE_SYMBOLS  = common.n_psk(2, np.concatenate(
     [TRIBIT[i][:] for i in [0,1,3,0,1,3,1,2,0,D1,D2,C1,C2,C3,0]]))
 PRE_SYMBOLS[9*32:14*32] = 0
 
 ## ---- preamble scramble symbols ------------------------------------------------
-PRE_SCRAMBLE = n_psk(8, np.concatenate([TRIBIT_SCRAMBLE for _ in range(15)]))
+PRE_SCRAMBLE = common.n_psk(8, np.concatenate([TRIBIT_SCRAMBLE for _ in range(15)]))
 
 ## ---- data scrambler -----------------------------------------------------------
 class ScrambleData(object):
@@ -64,9 +64,9 @@ class ScrambleData(object):
         return self._state
 
 ## ---- constellatios -----------------------------------------------------------
-BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), [0,1]), CONST_DTYPE)
-QPSK=np.array(zip(np.exp(2j*np.pi*np.arange(4)/4), [0,1,3,2]), CONST_DTYPE)
-PSK8=np.array(zip(np.exp(2j*np.pi*np.arange(8)/8), [0,1,3,2,7,6,4,5]), CONST_DTYPE)
+BPSK=np.array(zip(np.exp(2j*np.pi*np.arange(2)/2), [0,1]), common.CONST_DTYPE)
+QPSK=np.array(zip(np.exp(2j*np.pi*np.arange(4)/4), [0,1,3,2]), common.CONST_DTYPE)
+PSK8=np.array(zip(np.exp(2j*np.pi*np.arange(8)/8), [0,1,3,2,7,6,4,5]), common.CONST_DTYPE)
 
 ## ---- constellation indices ---------------------------------------------------
 MODE_BPSK=0
@@ -95,6 +95,41 @@ MODE[5][4] = {'bit_rate': 150, 'ci':MODE_BPSK, 'interleaver':['L', 40,144], 'unk
 
 MODE[7][5] = {'bit_rate':  75, 'ci':MODE_QPSK, 'interleaver':['S', 10,  9], 'unknown':-1,'known': 0, 'nsymb':32, 'coding_rate':1./2}
 MODE[5][4] = {'bit_rate':  75, 'ci':MODE_QPSK, 'interleaver':['L', 20, 36], 'unknown':-1,'known': 0, 'nsymb':32, 'coding_rate':1./2}
+
+## ---- deinterleaver -----------------------------------------------------------
+
+class Deinterleaver(object):
+    """deinterleave"""
+    def __init__(self, rows, cols):
+        self._a = np.zeros((rows, cols), dtype=np.float32)
+        self._i = 0
+        self._j = 0
+        self._di =   9 if rows==40 else  7
+        self._dj = -17 if rows==40 else -7
+        self._buffer = np.zeros(0, dtype=np.float32)
+        print('deinterleaver: ', rows, cols, self._di, self._dj)
+
+    def fetch(self, a):
+        pass
+
+    def load(self, a):
+        self._buffer = np.append(self._buffer, a)
+        print('interleaver load', self._a.shape, a.shape, self._buffer.shape)
+        if self._buffer.shape[0] < self._a.shape[0]:
+            return np.zeros(0, dtype=np.float32)
+        print('interleaver load buffer:', len(self._buffer),self._i,self._j)
+        i = np.arange(self._a.shape[0])
+        j = (self._j + self._dj*np.arange(self._a.shape[0])) % self._a.shape[1]
+        self._a[i,j] = self._buffer[0:self._a.shape[0]]
+        self._buffer = np.delete(self._buffer, i)
+        self._j += 1
+        print('interleaver load buffer:', len(self._buffer),self._i,self._j)
+        if self._j == self._a.shape[1]:
+            self._j = 0
+            print('==================== interleaver is full! ====================')
+            return np.concatenate([self._a[(self._di*i)%self._a.shape[0],j] for j in range(self._a.shape[1])])
+        else:
+            return np.zeros(0, dtype=np.float32)
 
 ## ---- physcal layer class -----------------------------------------------------
 class PhysicalLayer(object):
@@ -145,8 +180,8 @@ class PhysicalLayer(object):
     def get_next_data_frame(self, success):
         if self._frame_counter == self._num_frames_per_block:
             self._frame_counter = 0
-        scramble_for_frame = n_psk(8, np.array([self._scr_data.next()
-                                                for _ in range(self._frame_len)]))
+        scramble_for_frame = common.n_psk(8, np.array([self._scr_data.next()
+                                                       for _ in range(self._frame_len)]))
         a = np.array(zip(scramble_for_frame,
                          scramble_for_frame),
                      dtype=[('symb',     np.complex64),
@@ -155,8 +190,8 @@ class PhysicalLayer(object):
         a['symb'][0:n_unknown] = 0
         if self._frame_counter >= self._num_frames_per_block-2:
             idx_d1d2 = self._frame_counter - self._num_frames_per_block + 2;
-            a['symb'][n_unknown  :n_unknown+ 8] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
-            a['symb'][n_unknown+8:n_unknown+16] *= n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
+            a['symb'][n_unknown  :n_unknown+ 8] *= common.n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
+            a['symb'][n_unknown+8:n_unknown+16] *= common.n_psk(2, WALSH[self._d1d2[idx_d1d2]][:])
         if not success:
             self._frame_counter = -1
             self._pre_counter = -1
@@ -183,10 +218,10 @@ class PhysicalLayer(object):
                 pks = [np.correlate(iq_samples[imax+i*32*sps+idx],
                                     zp[             i*32*sps+idx])[0]
                        for i in range(9)]
-                doppler = freq_est(pks)/(32*sps)
-            print('success=', success, 'doppler=', doppler,
-                  np.abs(np.array(pks)),
-                  np.angle(np.array(pks)))
+                doppler = common.freq_est(pks)/(32*sps)
+                print('success=', success, 'doppler=', doppler,
+                      np.abs(np.array(pks)),
+                      np.angle(np.array(pks)))
         return success,doppler
 
     def decode_preamble(self, symbols):
@@ -202,10 +237,21 @@ class PhysicalLayer(object):
         self._block_len = 11520 if self._mode['interleaver'][0] == 'L' else 1440
         self._frame_len = self._mode['known'] + self._mode['unknown']
         self._num_frames_per_block = self._block_len/self._frame_len;
+        self._deinterleaver = Deinterleaver(self._mode['interleaver'][1], self._mode['interleaver'][2])
+        print(self._d1d2, self._mode, self._frame_len)
         return True
 
     def set_mode(self, _):
         pass
+
+    def decode_soft_dec(self, soft_dec):
+        print('decode_soft_dec', len(soft_dec), soft_dec.dtype)
+        r = self._deinterleaver.load(soft_dec)
+        print('decode_soft_dec r=', r.shape)
+        if r.shape[0] != 0:
+            for i in range(r.shape[0]//4):
+                print('BB:', r[4*i]<0, r[4*i+2]<0, '|', r[4*i+1]<0, r[4*i+3]<0)
+        return soft_dec ## TODO
 
     @staticmethod
     def get_preamble():
