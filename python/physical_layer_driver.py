@@ -36,7 +36,10 @@ class physical_layer_driver(gr.hier_block2):
         gr.hier_block2.__init__(self,
                                 "physical_layer_driver",
                                 gr.io_signature(1, 1, gr.sizeof_gr_complex), # Input signature
-                                gr.io_signature(2, 2, gr.sizeof_gr_complex)) # Output signature
+                                gr.io_signature3(3, 3,
+                                                 gr.sizeof_gr_complex,
+                                                 gr.sizeof_gr_complex,
+                                                 gr.sizeof_gr_complex*(1+sps*(nB+nF)))) # Output signature
 
         self._sps   = sps
         self._alpha = alpha
@@ -68,8 +71,10 @@ class physical_layer_driver(gr.hier_block2):
                      (self._doppler_correction, 0),
                      (self._adaptive_filter, 0),
                      (self, 0))
-        self.connect((self._corr_est, 1), ## correlation
+        self.connect((self._corr_est, 1),        ## correlation
                      (self, 1))
+        self.connect((self._adaptive_filter, 1), ## taps
+                     (self, 2))
 
         self.msg_connect((self._doppler_correction, 'doppler'), (self._msg_proxy, 'doppler'))
         self.msg_connect((self._msg_proxy, 'doppler'), (self._doppler_correction, 'doppler'))

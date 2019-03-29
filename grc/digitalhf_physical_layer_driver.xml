@@ -73,4 +73,11 @@
     <type>message</type>
     <optional>1</optional>
   </source>
+
+  <source>
+    <name>taps</name>
+    <type>complex</type>
+    <vlen>(1+$sps*($nB+$nF))</vlen>
+    <optional>1</optional>
+  </source>
 </block>

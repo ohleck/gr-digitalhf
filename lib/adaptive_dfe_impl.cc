@@ -24,6 +24,7 @@
 
 #include <boost/format.hpp>
 
+#include <gnuradio/math.h>
 #include <gnuradio/expj.h>
 #include <gnuradio/io_signature.h>
 #include <gnuradio/logger.h>
@@ -59,7 +60,9 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
                                      float alpha)
   : gr::block("adaptive_dfe",
               gr::io_signature::make(1, 1, sizeof(gr_complex)),
-              gr::io_signature::make(1, 1, sizeof(gr_complex)))
+              gr::io_signature::make2(2, 2,
+                                      sizeof(gr_complex),
+                                      sizeof(gr_complex)*(sps*(nF+nB)+1)))
   , _sps(sps)
   , _nB(nB*sps)
   , _nF(nF*sps)
@@ -88,6 +91,10 @@ adaptive_dfe_impl::adaptive_dfe_impl(int sps, // samples per symbol
                {"frame_info", pmt::intern("frame_info")}}
   , _msg_metadata(pmt::make_dict())
   , _state(WAIT_FOR_PREAMBLE)
+  , _num_samples_since_filter_update(0)
+  , _rotated_samples()
+  , _rotator()
+  , _control_loop(2*M_PI/100, 5e-3, -5e-3)
 {
   GR_LOG_DECLARE_LOGPTR(d_logger);
   GR_LOG_ASSIGN_LOGPTR(d_logger, "adaptive_dfe");
@@ -130,7 +137,8 @@ adaptive_dfe_impl::general_work(int noutput_items,
   gr::thread::scoped_lock lock(d_setlock);
   //GR_LOG_DEBUG(d_logger, str(boost::format("work: %d") % noutput_items));
   gr_complex const* in = (gr_complex const *)input_items[0];
-  gr_complex *out = (gr_complex *)output_items[0];
+  gr_complex *out_symb = (gr_complex *)output_items[0];
+  gr_complex *out_taps = (gr_complex *)output_items[1];
 
   const int nin = ninput_items[0];
 
@@ -171,8 +179,19 @@ adaptive_dfe_impl::general_work(int noutput_items,
     } // WAIT_FOR_FRAME_INFO
     case DO_FILTER: {
       // std::cout << "========= offset (DO_FILTER) nitems_read(0)= " << nitems_read(0) << " ==========" << std::endl;
+      _rotated_samples.resize(ninput+_nF+1);
       int ninput_processed = 0;
       for (int i=history()-1; i<ninput && nout<noutput_items; i+=_sps, ninput_processed+=_sps) {
+        // rotate samples
+        if (i == history()-1) {
+          _rotator.rotateN(&_rotated_samples[0] + i - _nB,
+                           in      + i - _nB,
+                           _nB+_nF+1);
+        } else {
+          _rotator.rotateN(&_rotated_samples[0] + i + _nF+1 - _sps,
+                           in      + i + _nF+1 - _sps,
+                           _sps);
+        }
         if (_symbol_counter == _symbols.size()) {
           publish_frame_info();
           publish_soft_dec();
@@ -187,7 +206,10 @@ adaptive_dfe_impl::general_work(int noutput_items,
         }
         // std::cout << "FILTER_CHECK: " << i << " " << i-1-_nB << " " << i+_nF << " " << in[i] << std::endl;
         assert(i+_nF < nin && i-1-_nB >= 0);
-        out[nout++] = filter(in + i - _nB, in + i + _nF+1);
+        out_symb[nout] = filter(&_rotated_samples[0] + i - _nB,
+                                &_rotated_samples[0] + i + _nF+1);
+        std::memcpy(&out_taps[(_nB+_nF+1)*nout], _taps_samples, (_nB+_nF+1)*sizeof(gr_complex));
+        ++nout;
       } // next sample
       consume(0, ninput_processed);
       break;
@@ -199,10 +221,10 @@ adaptive_dfe_impl::general_work(int noutput_items,
 bool adaptive_dfe_impl::start()
 {
   gr::thread::scoped_lock lock(d_setlock);
-  _taps_samples = (gr_complex*)(volk_malloc((_nB+_nF+1)*sizeof(gr_complex), volk_get_alignment()));
-  _taps_symbols = (gr_complex*)(volk_malloc(        _nW*sizeof(gr_complex), volk_get_alignment()));
-  _hist_symbols = (gr_complex*)(volk_malloc(      2*_nW*sizeof(gr_complex), volk_get_alignment()));
-
+  _taps_samples      = (gr_complex*)(volk_malloc((_nB+_nF+1)*sizeof(gr_complex), volk_get_alignment()));
+  _last_taps_samples = (gr_complex*)(volk_malloc((_nB+_nF+1)*sizeof(gr_complex), volk_get_alignment()));
+  _taps_symbols      = (gr_complex*)(volk_malloc(        _nW*sizeof(gr_complex), volk_get_alignment()));
+  _hist_symbols      = (gr_complex*)(volk_malloc(      2*_nW*sizeof(gr_complex), volk_get_alignment()));
   reset_filter();
   GR_LOG_DEBUG(d_logger,str(boost::format("adaptive_dfe_impl::start() nB=%d nF=%d mu=%f alpha=%f")
                              % _nB % _nF % _mu % _alpha));
@@ -213,6 +235,7 @@ bool adaptive_dfe_impl::stop()
   gr::thread::scoped_lock lock(d_setlock);
   GR_LOG_DEBUG(d_logger, "adaptive_dfe_impl::stop()");
   VOLK_SAFE_DELETE(_taps_samples);
+  VOLK_SAFE_DELETE(_last_taps_samples);
   VOLK_SAFE_DELETE(_taps_symbols);
   VOLK_SAFE_DELETE(_hist_symbols);
   return true;
@@ -221,14 +244,19 @@ bool adaptive_dfe_impl::stop()
 gr_complex adaptive_dfe_impl::filter(gr_complex const* start, gr_complex const* end) {
   assert(end-start == _nB + _nF + 1);
 
-  gr_complex filter_output = 0;
+  _num_samples_since_filter_update += _sps;
+
+  // (1) run the filter filter
+  gr_complex filter_output(0);
+  // (1a) taps_samples
   volk_32fc_x2_dot_prod_32fc(&filter_output,
                              start,
                              _taps_samples,
                              _nB+_nF+1);
-  gr_complex dot_symbols=0;
+  // (1b) taps_symbols
+  gr_complex dot_symbols(0);
   gr::digital::constellation_sptr constell = _constellations[_constellation_index];
-  bool const update_taps = true;//constell->bits_per_symbol() <= 3;
+  bool const update_taps = true; //constell->bits_per_symbol() <= 3;
   if (constell->bits_per_symbol() > 3)
     _use_symbol_taps = false;
   if (_use_symbol_taps) {
@@ -239,8 +267,10 @@ gr_complex adaptive_dfe_impl::filter(gr_complex const* start, gr_complex const* 
     filter_output += dot_symbols;
   }
   assert(_symbol_counter < _symbols.size());
+
   gr_complex known_symbol = _symbols[_symbol_counter];
   bool const is_known     = std::abs(known_symbol) > 1e-5;
+  // (2)  unknown symbols (=data): compute soft decisions
   if (not is_known) {
     gr_complex const descrambled_filter_output = std::conj(_scramble[_symbol_counter]) * filter_output;
     unsigned int const jc = constell->decision_maker(&descrambled_filter_output);
@@ -255,11 +285,27 @@ gr_complex adaptive_dfe_impl::filter(gr_complex const* start, gr_complex const* 
     known_symbol = _scramble[_symbol_counter] * descrambled_symbol;
   }
   // std::cout << "FILTER: " << filter_output <<" " << known_symbol << " " << start[_nB+1] << std::endl;
+  // (3) filter update
   if (is_known || update_taps) {
-    gr_complex const err =  filter_output - known_symbol;
-    for (int j=0; j<_nB+_nF+1; ++j)
-      _taps_samples[j] -= _mu*err*std::conj(start[j]);
+    // (3a) control loop update for doppler correction using the adaptibve filter taps
+    gr_complex acc(0);
+    for (int j=_nB+1-2*_sps; j<_nB+1+2*_sps+1; ++j)
+      acc += std::conj(_last_taps_samples[j]) * _taps_samples[j];
+    float const frequency_err = gr::fast_atan2f(acc)/_num_samples_since_filter_update; // frequency error (rad/sample)
+    _control_loop.advance_loop(frequency_err);
+    _control_loop.phase_wrap();
+    _control_loop.frequency_limit();
+    _rotator.set_phase_incr(gr_expj(_control_loop.get_frequency()));
 
+    // (3b) update of adaptive filter taps
+    gr_complex const err =  filter_output - known_symbol;
+    //       taps_samples
+    for (int j=0; j<_nB+_nF+1; ++j) {
+      _last_taps_samples[j] = _taps_samples[j];
+      _taps_samples[j]     -= _mu*err*std::conj(start[j]);
+      _num_samples_since_filter_update = 0;
+    }
+    //       taps_symbols
     if (_use_symbol_taps) {
       for (int j=0; j<_nW; ++j) {
         assert(_hist_symbol_index+j < 2*_nW);
@@ -270,8 +316,9 @@ gr_complex adaptive_dfe_impl::filter(gr_complex const* start, gr_complex const* 
         _hist_symbol_index = 0;
     }
   }
+  // (4) save the descrambled symbol (-> frame_info)
   _descrambled_symbols[_symbol_counter] = filter_output*std::conj(_scramble[_symbol_counter]);
-  return filter_output*std::conj(_scramble[_symbol_counter++]);
+  return _descrambled_symbols[_symbol_counter++];
 }
 
 int
@@ -305,12 +352,13 @@ adaptive_dfe_impl::recenter_filter_taps() {
 
 void adaptive_dfe_impl::reset_filter()
 {
-  std::fill_n(_taps_samples, _nB+_nF+1, gr_complex(0));
-  std::fill_n(_taps_symbols,       _nW, gr_complex(0));
-  std::fill_n(_hist_symbols,     2*_nW, gr_complex(0));
-  _taps_samples[_nB+1] = 0.01;
+  std::fill_n(_taps_samples,              _nB+_nF+1, gr_complex(0));
+  std::fill_n(_last_taps_samples,         _nB+_nF+1, gr_complex(0));
+  std::fill_n(_taps_symbols,                    _nW, gr_complex(0));
+  std::fill_n(_hist_symbols,                  2*_nW, gr_complex(0));
   _taps_symbols[0]     = 1;
   _hist_symbol_index   = 0;
+  _num_samples_since_filter_update = 0;
 }
 
 void adaptive_dfe_impl::publish_frame_info()

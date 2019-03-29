@@ -21,6 +21,8 @@
 #ifndef INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 #define INCLUDED_DIGITALHF_ADAPTIVE_DFE_IMPL_H
 
+#include <gnuradio/blocks/control_loop.h>
+#include <gnuradio/blocks/rotator.h>
 #include <gnuradio/digital/constellation.h>
 #include <digitalhf/adaptive_dfe.h>
 
@@ -69,6 +71,7 @@ private:
 
   gr_complex* _taps_samples;
   gr_complex* _taps_symbols;
+  gr_complex* _last_taps_samples;
 
   gr_complex* _hist_symbols;
   int _hist_symbol_index;
@@ -86,6 +89,11 @@ private:
   std::vector<float> _vec_soft_decisions;
   std::map<std::string, pmt::pmt_t> _msg_ports;
   pmt::pmt_t _msg_metadata;
+
+  int _num_samples_since_filter_update;
+  std::vector<gr_complex> _rotated_samples;
+  blocks::rotator _rotator;
+  gr::blocks::control_loop _control_loop;
 
   enum state {
     WAIT_FOR_PREAMBLE,
