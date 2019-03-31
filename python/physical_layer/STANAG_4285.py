@@ -123,7 +123,7 @@ class PhysicalLayer(object):
         for i in range(80):
             p[i]      = state[-1]
             state     = np.concatenate(([np.sum(state&taps)&1], state[0:-1]))
-        a = np.zeros(80, dtype=[('symb',np.complex64), ('scramble', np.complex64)])
+        a = np.zeros(80, common.SYMB_SCRAMBLE_DTYPE)
         ## BPSK modulation
         constellation = PhysicalLayer.make_psk(2,range(2))['points']
         a['symb']     = constellation[p,]
@@ -140,7 +140,7 @@ class PhysicalLayer(object):
             p[i] = np.sum(state[-3:]*[4,2,1])
             for _ in range(3):
                 state = np.concatenate(([np.sum(state&taps)&1], state[0:-1]))
-        a=np.zeros(176, dtype=[('symb',np.complex64), ('scramble', np.complex64)])
+        a = np.zeros(176, common.SYMB_SCRAMBLE_DTYPE)
         ## 8PSK modulation
         constellation = PhysicalLayer.make_psk(8,range(8))['points']
         a['scramble'] = constellation[p,]

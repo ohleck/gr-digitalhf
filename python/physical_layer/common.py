@@ -5,6 +5,9 @@ import numpy as np
 CONST_DTYPE=np.dtype([('points',  np.complex64),
                       ('symbols', np.int32)])
 
+SYMB_SCRAMBLE_DTYPE=np.dtype([('symb',     np.complex64),
+                              ('scramble', np.complex64)])
+
 def n_psk(n,x):
     """n-ary PSK constellation"""
     return np.complex64(np.exp(2j*np.pi*x/n))

@@ -256,7 +256,7 @@ gr_complex adaptive_dfe_impl::filter(gr_complex const* start, gr_complex const* 
   // (1b) taps_symbols
   gr_complex dot_symbols(0);
   gr::digital::constellation_sptr constell = _constellations[_constellation_index];
-  bool const update_taps = true; //constell->bits_per_symbol() <= 3;
+  bool const update_taps = constell->bits_per_symbol() <= 3;
   if (constell->bits_per_symbol() > 3)
     _use_symbol_taps = false;
   if (_use_symbol_taps) {

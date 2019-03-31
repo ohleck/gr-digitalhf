@@ -242,8 +242,7 @@ class PhysicalLayer(object):
         print('make_reinserted_preamble', offset, success)
         a=np.array(zip(REINSERTED_PREAMBLE[offset:],
                        REINSERTED_PREAMBLE[offset:]),
-                   dtype=[('symb',     np.complex64),
-                          ('scramble', np.complex64)])
+                     common.SYMB_SCRAMBLE_DTYPE)
         a['symb'][-72:-72+3*13] = 0 ## D0,D1,D2
         if not success:
             self._frame_counter = -1
@@ -251,8 +250,7 @@ class PhysicalLayer(object):
 
     def make_data_frame(self, success):
         self._preamble_offset = -72 ## all following reinserted preambles start at index -72
-        a = np.zeros(256+31, dtype=[('symb',     np.complex64),
-                                    ('scramble', np.complex64)])
+        a = np.zeros(256+31, common.SYMB_SCRAMBLE_DTYPE)
         a['scramble'][:256] = self._data_scramble
         n = (self._frame_counter-2)%72
         m = n%18
@@ -274,8 +272,7 @@ class PhysicalLayer(object):
         """preamble symbols + scrambler"""
         return np.array(zip(PREAMBLE,
                             PREAMBLE),
-                        dtype=[('symb',     np.complex64),
-                               ('scramble', np.complex64)])
+                     common.SYMB_SCRAMBLE_DTYPE)
 
     def get_preamble_z(self):
         """preamble symbols for preamble correlation"""

@@ -55,7 +55,7 @@ class physical_layer_driver(gr.hier_block2):
         ## TODO: get rrc tap information from physical layer description
         self._rrc_taps = filter.firdes.root_raised_cosine(1.0, samp_rate, samp_rate/sps, 0.35, 11*sps)
         preamble_offset,preamble_samples = self._physical_layer_driver_description.get_preamble_z()
-        preamble_length          = sps*len(self._physical_layer_driver_description.get_preamble())
+        preamble_length          = len(preamble_samples)
         self._rrc_filter         = filter.fir_filter_ccc(1, (self._rrc_taps))
         self._corr_est           = digital.corr_est_cc(symbols    = (preamble_samples.tolist()),
                                                        sps        = sps,

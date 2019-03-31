@@ -184,8 +184,7 @@ class PhysicalLayer(object):
                                                        for _ in range(self._frame_len)]))
         a = np.array(zip(scramble_for_frame,
                          scramble_for_frame),
-                     dtype=[('symb',     np.complex64),
-                            ('scramble', np.complex64)])
+                     common.SYMB_SCRAMBLE_DTYPE)
         n_unknown = self._mode['unknown']
         a['symb'][0:n_unknown] = 0
         if self._frame_counter >= self._num_frames_per_block-2:
@@ -258,8 +257,7 @@ class PhysicalLayer(object):
         """preamble symbols + scrambler"""
         return np.array(zip(PRE_SCRAMBLE*PRE_SYMBOLS,
                             PRE_SCRAMBLE),
-                        dtype=[('symb',     np.complex64),
-                               ('scramble', np.complex64)])
+                     common.SYMB_SCRAMBLE_DTYPE)
 
     def get_preamble_z(self):
         """preamble symbols for preamble correlation"""
