@@ -24,5 +24,10 @@
 install(FILES
     api.h
     adaptive_dfe.h
-    doppler_correction_cc.h DESTINATION include/digitalhf
+    doppler_correction_cc.h
+    viterbi27.h
+    viterbi29.h
+    viterbi39.h
+    viterbi48.h
+    DESTINATION include/digitalhf
 )

@@ -26,7 +26,6 @@ from gnuradio import filter
 from gnuradio import gr
 import pmt
 import digitalhf
-import digitalhf.physical_layer
 
 class physical_layer_driver(gr.hier_block2):
     """

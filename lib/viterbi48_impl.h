@@ -1,0 +1,52 @@
+/* -*- c++ -*- */
+/*
+ * Copyright 2018 hcab14@mail.com.
+ *
+ * This is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3, or (at your option)
+ * any later version.
+ *
+ * This software is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this software; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street,
+ * Boston, MA 02110-1301, USA.
+ */
+
+#ifndef INCLUDED_DIGITALHF_VITERBI48IMPL_H
+#define INCLUDED_DIGITALHF_VITERBI48IMPL_H
+
+#include <digitalhf/viterbi48.h>
+
+#include "viterbi.h"
+#include "llr_to_prob.h"
+
+namespace gr {
+namespace digitalhf {
+
+class viterbi48_impl : public viterbi48, public llr_to_prob<1024> {
+private:
+  viterbi<4,8> _v;
+  float  _quality;
+  size_t _num_bits;
+  std::vector<std::uint8_t> _bits;
+
+public:
+  viterbi48_impl(std::uint32_t pol0, std::uint32_t pol1,
+                 std::uint32_t pol2, std::uint32_t pol3);
+  virtual ~viterbi48_impl();
+
+  virtual void       reset();
+  virtual const std::vector<std::uint8_t>& udpate(const std::vector<float>& soft_dec);
+  virtual float      quality();
+} ;
+
+} // namespace digitalhf
+} // namespace gr
+
+#endif /* INCLUDED_DIGITALHF_VITERBI48IMPL_H */

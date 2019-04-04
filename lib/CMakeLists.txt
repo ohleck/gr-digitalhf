@@ -27,7 +27,11 @@ include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIRS})
 list(APPEND digitalhf_sources
     adaptive_dfe_impl.cc
-    doppler_correction_cc_impl.cc )
+    doppler_correction_cc_impl.cc
+    viterbi27_impl.cc
+    viterbi29_impl.cc
+    viterbi39_impl.cc
+    viterbi48_impl.cc)
 
 set(digitalhf_sources "${digitalhf_sources}" PARENT_SCOPE)
 if(NOT digitalhf_sources)
